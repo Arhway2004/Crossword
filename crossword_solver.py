@@ -1,21 +1,7 @@
 """
 ============================================================================
-CROSSWORD PUZZLE SOLVER - PYTHON MAIN PROGRAM
+CROSSWORD PUZZLE SOLVER - PYTHON MAIN PROGRAM (FIXED)
 Beautiful UI with Full Backtracking & Confidence-Based Heuristic
-============================================================================
-Run: python crossword_solver.py
-
-Requirements:
-- Python 3.x
-- turtle (built-in)
-- pyswip (optional, for Prolog solver): pip install pyswip
-- SWI-Prolog installed (for Prolog solver)
-
-Files needed:
-- crossword_solver.pl (Prolog rules - confidence heuristic version)
-- grid.txt (crossword grid)
-- word.txt or words.txt (word list)
-- constraints.txt (optional pattern constraints)
 ============================================================================
 """
 
@@ -159,278 +145,15 @@ ___XXXX"""
         return slots
 
 
-class PrologCrosswordSolver:
-    """Interface to Prolog solver with confidence-based heuristic"""
-    
-    def __init__(self, prolog_file="crossword_solver.pl"):
-        if not PROLOG_AVAILABLE:
-            raise ImportError("pyswip not available")
-        
-        self.prolog = Prolog()
-        self.step_callback = None
-        self.slots = []
-        
-        # Check if Prolog file exists
-        if not os.path.exists(prolog_file):
-            print(f"WARNING: {prolog_file} not found!")
-            print("Please make sure crossword_solver.pl is in the same directory.")
-            raise FileNotFoundError(f"{prolog_file} not found")
-        
-        try:
-            self.prolog.consult(prolog_file)
-            print(f"✓ Solver choice: Using Prolog solver with confidence heuristic from {prolog_file}")
-        except Exception as e:
-            print(f"ERROR loading Prolog: {e}")
-            raise
-    
-    def set_step_callback(self, callback):
-        """Set callback function to visualize each step"""
-        self.step_callback = callback
-    
-    def load_slots(self, slots):
-        """Load slot definitions into Prolog"""
-        self.slots = slots
-        for slot in slots:
-            query = f"assertz(slot({slot['id']}, {slot['direction']}, " \
-                   f"{slot['row']}, {slot['col']}, {slot['length']}))"
-            list(self.prolog.query(query))
-    
-    def load_words(self, filename):
-        """Load word list from file"""
-        # Try word.txt first, then words.txt
-        filenames = [filename, 'word.txt', 'words.txt']
-        loaded = False
-        
-        for fname in filenames:
-            try:
-                with open(fname, 'r', encoding='utf-8') as f:
-                    count = 0
-                    for line in f:
-                        word = line.strip().lower()
-                        if word:
-                            # Handle apostrophes by replacing with underscore
-                            word = word.replace("'", "_")
-                            query = f"assertz(word('{word}'))"
-                            list(self.prolog.query(query))
-                            count += 1
-                    print(f"✓ Loaded {count} words from {fname}")
-                    loaded = True
-                    break
-            except FileNotFoundError:
-                continue
-        
-        if not loaded:
-            print(f"WARNING: No word file found, creating sample...")
-            self.create_sample_words()
-            self.load_words('word.txt')
-    
-    def create_sample_words(self):
-        """Create sample word list"""
-        words = ["dog", "doctor", "rat"]
-        with open("word.txt", 'w') as f:
-            f.write('\n'.join(words))
-        print("✓ Created sample word.txt")
-    
-    def load_constraints(self, filename, slots):
-        """Load pattern constraints (e.g., dog***, o*o***)"""
-        try:
-            with open(filename, 'r', encoding='utf-8') as f:
-                count = 0
-                mismatches = 0
-                for line_idx, line in enumerate(f):
-                    line = line.strip().lower()
-                    if not line:
-                        continue
-                    
-                    # Support both "slot_id:pattern" and bare "pattern"
-                    if ':' in line:
-                        parts = line.split(':', 1)
-                        try:
-                            slot_id = int(parts[0].strip())
-                            pattern = parts[1].strip()
-                        except ValueError:
-                            print(f"  Warning: Invalid slot_id in line {line_idx+1}, skipping")
-                            continue
-                    else:
-                        # Fallback: use line index as slot_id
-                        slot_id = line_idx
-                        pattern = line
-                    
-                    # Verify pattern length matches slot length
-                    slot_match = None
-                    for slot in slots:
-                        if slot['id'] == slot_id:
-                            slot_match = slot
-                            break
-                    
-                    if slot_match:
-                        if len(pattern) != slot_match['length']:
-                            print(f"  Warning: Constraint for slot {slot_id} has length {len(pattern)}, but slot length is {slot_match['length']} - ignoring")
-                            mismatches += 1
-                            continue
-                        
-                        query = f"assertz(constraint({slot_id}, '{pattern}'))"
-                        list(self.prolog.query(query))
-                        print(f"  Constraint slot {slot_id}: {pattern}")
-                        count += 1
-                    else:
-                        print(f"  Warning: Constraint references non-existent slot {slot_id}, ignoring")
-                
-                if count > 0:
-                    print(f"✓ Loaded {count} constraints from {filename}")
-                if mismatches > 0:
-                    print(f"  ({mismatches} constraint(s) ignored due to length mismatch)")
-        except FileNotFoundError:
-            print(f"  No {filename} found (constraints are optional)")
-    
-    def solve(self, slot_ids):
-        """Solve using Prolog backtracking with confidence heuristic and visualization"""
-        list(self.prolog.query("clear_placements"))
-        
-        # Use iterative approach with Python controlling the visualization
-        if self.step_callback:
-            return self.solve_with_visualization(slot_ids)
-        else:
-            return self.solve_direct(slot_ids)
-    
-    def solve_direct(self, slot_ids):
-        """Direct Prolog solve without visualization"""
-        slot_list = str(slot_ids).replace(' ', '')
-        query = f"solve_crossword({slot_list}, Solution)"
-        
-        print(f"  Prolog query: {query}")
-        print(f"  Using confidence-based heuristic for faster solving...")
-        
-        try:
-            solutions = list(self.prolog.query(query))
-            if solutions:
-                solution = solutions[0]['Solution']
-                parsed = []
-                for item in solution:
-                    slot_id = int(str(item.args[0]))
-                    word = str(item.args[1])
-                    parsed.append((slot_id, word))
-                return parsed
-            return None
-        except Exception as e:
-            print(f"Prolog error: {e}")
-            return None
-    
-    def solve_with_visualization(self, slot_ids):
-        """Solve with step-by-step visualization using Python backtracking over Prolog choices"""
-        placements = {}
-        used_words = set()
-        
-        def get_candidates_for_slot(slot_id):
-            """Get all valid candidate words from Prolog for a slot"""
-            candidates = []
-            slot = self.slots[slot_id]
-            
-            # Query Prolog for words with confidence
-            try:
-                # First, try to get candidates with confidence >= 1
-                query = f"""
-                    word(W), 
-                    slot({slot_id}, _, _, _, Len), 
-                    atom_length(W, Len),
-                    \\+ placement(_, W),
-                    (constraint({slot_id}, P) -> matches_pattern(W, P) ; true),
-                    confidence({slot_id}, W, Conf),
-                    Conf >= 1
-                """
-                results = list(self.prolog.query(query))
-                
-                if results:
-                    for result in results:
-                        word = str(result['W'])
-                        if word not in used_words:
-                            candidates.append(word)
-                
-                # Fallback: if no high-confidence candidates, get any valid word
-                if not candidates:
-                    query = f"""
-                        word(W), 
-                        slot({slot_id}, _, _, _, Len), 
-                        atom_length(W, Len),
-                        \\+ placement(_, W),
-                        (constraint({slot_id}, P) -> matches_pattern(W, P) ; true)
-                    """
-                    results = list(self.prolog.query(query))
-                    for result in results:
-                        word = str(result['W'])
-                        if word not in used_words:
-                            candidates.append(word)
-            
-            except Exception as e:
-                print(f"  Warning: Error querying candidates: {e}")
-            
-            return candidates
-        
-        def backtrack(slot_idx):
-            if slot_idx >= len(slot_ids):
-                return True
-            
-            slot_id = slot_ids[slot_idx]
-            slot = self.slots[slot_id]
-            
-            # Get candidates from Prolog
-            candidates = get_candidates_for_slot(slot_id)
-            
-            for word in candidates:
-                if word in used_words:
-                    continue
-                
-                # Try placing this word in Prolog
-                query = f"assertz(placement({slot_id}, '{word}'))"
-                list(self.prolog.query(query))
-                placements[slot_id] = word
-                used_words.add(word)
-                
-                # Check if placement is valid
-                valid = True
-                try:
-                    check_query = f"check_all_constraints({slot_id}, '{word}')"
-                    results = list(self.prolog.query(check_query))
-                    valid = len(results) > 0
-                except:
-                    valid = False
-                
-                if valid:
-                    # Visualize placement
-                    if self.step_callback:
-                        self.step_callback(slot_id, word, slot, True)
-                    
-                    # Recurse
-                    if backtrack(slot_idx + 1):
-                        return True
-                
-                # Backtrack - visualize removal
-                if self.step_callback:
-                    self.step_callback(slot_id, word, slot, False)
-                
-                # Remove from Prolog
-                query = f"retract(placement({slot_id}, '{word}'))"
-                list(self.prolog.query(query))
-                del placements[slot_id]
-                used_words.remove(word)
-            
-            return False
-        
-        print(f"  Using Prolog with Python-controlled visualization...")
-        
-        if backtrack(0):
-            return [(sid, placements[sid]) for sid in slot_ids if sid in placements]
-        return None
-
-
 class PythonCrosswordSolver:
-    """Fallback Python-based solver with confidence heuristic"""
+    """Python-based solver with confidence heuristic"""
     
     def __init__(self):
         self.words = []
         self.constraints = {}
         self.slots = []
         self.step_callback = None
+        self.current_placements = {}  # Track current placements for visualization
         print("✓ Solver choice: Using Python solver with confidence heuristic")
     
     def set_step_callback(self, callback):
@@ -452,7 +175,6 @@ class PythonCrosswordSolver:
                     for line in f:
                         word = line.strip().lower()
                         if word:
-                            # Handle apostrophes by replacing with underscore
                             word = word.replace("'", "_")
                             self.words.append(word)
                     print(f"✓ Loaded {len(self.words)} words from {fname}")
@@ -477,7 +199,6 @@ class PythonCrosswordSolver:
                     if not line:
                         continue
                     
-                    # Support both "slot_id:pattern" and bare "pattern"
                     if ':' in line:
                         parts = line.split(':', 1)
                         try:
@@ -487,11 +208,9 @@ class PythonCrosswordSolver:
                             print(f"  Warning: Invalid slot_id in line {line_idx+1}, skipping")
                             continue
                     else:
-                        # Fallback: use line index as slot_id
                         slot_id = line_idx
                         pattern = line
                     
-                    # Verify pattern length matches slot length
                     slot_match = None
                     for slot in slots:
                         if slot['id'] == slot_id:
@@ -532,21 +251,17 @@ class PythonCrosswordSolver:
             return None
             
         if slot1['direction'] == 'across' and slot2['direction'] == 'down':
-            # ACROSS: row R1, columns C1 to C1+Len1-1
-            # DOWN: column C2, rows R2 to R2+Len2-1
             if (slot2['row'] <= slot1['row'] < slot2['row'] + slot2['length'] and
                 slot1['col'] <= slot2['col'] < slot1['col'] + slot1['length']):
-                pos1 = slot2['col'] - slot1['col']  # Position in across word
-                pos2 = slot1['row'] - slot2['row']  # Position in down word
+                pos1 = slot2['col'] - slot1['col']
+                pos2 = slot1['row'] - slot2['row']
                 return (pos1, pos2)
                 
         elif slot1['direction'] == 'down' and slot2['direction'] == 'across':
-            # DOWN: column C1, rows R1 to R1+Len1-1
-            # ACROSS: row R2, columns C2 to C2+Len2-1
             if (slot1['row'] <= slot2['row'] < slot1['row'] + slot1['length'] and
                 slot2['col'] <= slot1['col'] < slot2['col'] + slot2['length']):
-                pos1 = slot2['row'] - slot1['row']  # Position in down word
-                pos2 = slot1['col'] - slot2['col']  # Position in across word
+                pos1 = slot2['row'] - slot1['row']
+                pos2 = slot1['col'] - slot2['col']
                 return (pos1, pos2)
         
         return None
@@ -579,19 +294,15 @@ class PythonCrosswordSolver:
         slot = self.slots[slot_id]
         score = 0
         
-        # Check all other slots
         for other_slot in self.slots:
             other_id = other_slot['id']
             
-            # Skip same slot or already placed slots
             if other_id == slot_id or other_id in placements:
                 continue
             
-            # Only check opposite direction slots (potential intersections)
             if slot['direction'] == other_slot['direction']:
                 continue
             
-            # Check if they intersect
             intersection = self.get_intersection(slot, other_slot)
             if not intersection:
                 continue
@@ -599,28 +310,27 @@ class PythonCrosswordSolver:
             pos_in_slot, pos_in_other = intersection
             letter = word[pos_in_slot]
             
-            # Check if there exists at least one valid word for other_slot
-            # that has 'letter' at pos_in_other
             candidate_exists = False
             for candidate_word in self.words:
-                # Check length
                 if len(candidate_word) != other_slot['length']:
                     continue
                 
-                # Check if already used
                 if candidate_word in used_words:
                     continue
                 
-                # Check letter match at intersection
                 if candidate_word[pos_in_other] != letter:
                     continue
                 
-                # Check constraint if exists
                 if other_id in self.constraints:
                     if not self.matches_pattern(candidate_word, self.constraints[other_id]):
                         continue
                 
-                # Found at least one valid candidate
+                # Check if this candidate would be compatible with existing placements
+                test_placements = placements.copy()
+                test_placements[other_id] = candidate_word
+                if not self.check_intersection(test_placements):
+                    continue
+                
                 candidate_exists = True
                 break
             
@@ -633,6 +343,7 @@ class PythonCrosswordSolver:
         """Backtracking solver with confidence-based heuristic"""
         placements = {}
         used_words = set()
+        self.current_placements = placements
         
         def backtrack(slot_idx):
             if slot_idx >= len(slot_ids):
@@ -644,20 +355,16 @@ class PythonCrosswordSolver:
             # Collect all valid candidates with their confidence scores
             candidates = []
             for word in self.words:
-                # Check word length
                 if len(word) != slot['length']:
                     continue
                     
-                # Check if word already used
                 if word in used_words:
                     continue
                     
-                # Check constraint if exists
                 if slot_id in self.constraints:
                     if not self.matches_pattern(word, self.constraints[slot_id]):
                         continue
                 
-                # Calculate confidence score
                 confidence = self.calculate_confidence(slot_id, word, placements, used_words)
                 candidates.append((confidence, word))
             
@@ -666,39 +373,31 @@ class PythonCrosswordSolver:
             
             # Try candidates in order of confidence
             for confidence, word in candidates:
-                # Prune if confidence is 0 and we have intersections
-                # (unless it's the only option or no intersections exist)
+                # FIX: Only prune zero-confidence if there are intersections
                 if confidence == 0 and len(candidates) > 1:
-                    # Check if this slot has any intersections at all
                     has_intersections = any(
                         self.get_intersection(slot, self.slots[other_id]) is not None
-                        for other_id in slot_ids if other_id != slot_id
+                        for other_id in slot_ids if other_id != slot_id and other_id not in placements
                     )
                     if has_intersections:
-                        continue  # Skip this low-confidence candidate
+                        continue
                 
-                # Try this word
                 placements[slot_id] = word
                 used_words.add(word)
                 
-                # Check intersections with ALL previously placed words
                 if self.check_intersection(placements):
-                    # Visualize this step
                     if self.step_callback:
-                        self.step_callback(slot_id, word, slot, True)
+                        self.step_callback(slot_id, word, slot, True, placements.copy())
                     
-                    # Recursively try to fill remaining slots
                     if backtrack(slot_idx + 1):
                         return True
                 
-                # BACKTRACK: Remove this word and try next
                 if self.step_callback:
-                    self.step_callback(slot_id, word, slot, False)
+                    self.step_callback(slot_id, word, slot, False, placements.copy())
                 
                 del placements[slot_id]
                 used_words.remove(word)
             
-            # No word worked for this slot, backtrack further
             return False
         
         if backtrack(0):
@@ -707,7 +406,7 @@ class PythonCrosswordSolver:
 
 
 class CrosswordDrawer:
-    """Beautiful crossword drawer with modern UI"""
+    """Beautiful crossword drawer with modern UI (FIXED)"""
     
     def __init__(self, grid, cell_size=60, animate=True):
         self.grid = grid
@@ -716,11 +415,12 @@ class CrosswordDrawer:
         self.cell_size = cell_size
         self.animate = animate
         self.slots_storage = []
+        self.current_placements = {}
         
-        # Color scheme (dark blue-gray theme)
+        # Color scheme
         self.colors = {
             'background': '#2C3E50',
-            'cell_bg': '#ECF0F1',
+            'cell_bg': '#FFFFFF',  # Pure white for empty cells
             'cell_border': '#34495E',
             'blocked': '#34495E',
             'letter': '#2C3E50',
@@ -734,7 +434,7 @@ class CrosswordDrawer:
         
         self.screen = turtle.Screen()
         self.screen.setup(width=width, height=height)
-        self.screen.title("Crossword Puzzle Solver - Confidence Heuristic")
+        self.screen.title("Crossword Puzzle Solver - Fixed Version")
         self.screen.bgcolor(self.colors['background'])
         
         self.pen = turtle.Turtle()
@@ -752,11 +452,11 @@ class CrosswordDrawer:
             self.screen.tracer(0)
     
     def draw_grid(self):
-        """Draw beautiful crossword grid"""
+        """Draw beautiful crossword grid (FIXED: lighter empty cells)"""
         start_x = -(self.cols * self.cell_size) / 2
         start_y = (self.rows * self.cell_size) / 2
         
-        # Draw outer border (thick)
+        # Draw outer border
         self.pen.penup()
         self.pen.goto(start_x - 5, start_y + 5)
         self.pen.pendown()
@@ -769,8 +469,8 @@ class CrosswordDrawer:
                 self.pen.forward(self.rows * self.cell_size + 10)
             self.pen.right(90)
         
-        # Draw cells
-        self.pen.pensize(3)
+        # Draw cells (FIX: Don't fill empty cells, only draw borders)
+        self.pen.pensize(2)
         for row in range(self.rows):
             for col in range(self.cols):
                 x = start_x + col * self.cell_size
@@ -780,19 +480,24 @@ class CrosswordDrawer:
                 self.pen.goto(x, y)
                 self.pen.pendown()
                 
-                # Only 'X' is blocked (solid), '_' is empty white cell
                 if self.grid[row][col] == 'X':
+                    # Blocked cells: filled
                     self.pen.fillcolor(self.colors['blocked'])
                     self.pen.color(self.colors['blocked'])
-                else:  # '_' is empty white cell
+                    self.pen.begin_fill()
+                    for _ in range(4):
+                        self.pen.forward(self.cell_size)
+                        self.pen.right(90)
+                    self.pen.end_fill()
+                else:
+                    # Empty cells: white background with border only
                     self.pen.fillcolor(self.colors['cell_bg'])
                     self.pen.color(self.colors['cell_border'])
-                
-                self.pen.begin_fill()
-                for _ in range(4):
-                    self.pen.forward(self.cell_size)
-                    self.pen.right(90)
-                self.pen.end_fill()
+                    self.pen.begin_fill()
+                    for _ in range(4):
+                        self.pen.forward(self.cell_size)
+                        self.pen.right(90)
+                    self.pen.end_fill()
         
         self.screen.update()
     
@@ -808,7 +513,7 @@ class CrosswordDrawer:
                       font=("Arial", int(self.cell_size * 0.55), "bold"))
     
     def clear_cell(self, row, col):
-        """Clear a cell by redrawing it based on original grid"""
+        """Clear a cell and redraw any intersecting letters (FIXED)"""
         start_x = -(self.cols * self.cell_size) / 2
         start_y = (self.rows * self.cell_size) / 2
         x = start_x + col * self.cell_size
@@ -817,9 +522,9 @@ class CrosswordDrawer:
         self.pen.penup()
         self.pen.goto(x, y)
         self.pen.pendown()
-        self.pen.pensize(3)
+        self.pen.pensize(2)
         
-        # Redraw based on original grid state
+        # Redraw cell background
         if self.grid[row][col] == 'X':
             self.pen.fillcolor(self.colors['blocked'])
             self.pen.color(self.colors['blocked'])
@@ -832,6 +537,23 @@ class CrosswordDrawer:
             self.pen.forward(self.cell_size)
             self.pen.right(90)
         self.pen.end_fill()
+        
+        # FIX: Redraw any letter that should still be there from other placements
+        for sid, word in self.current_placements.items():
+            if sid >= len(self.slots_storage):
+                continue
+            slot = self.slots_storage[sid]
+            
+            if slot['direction'] == 'across':
+                if row == slot['row'] and slot['col'] <= col < slot['col'] + slot['length']:
+                    letter_idx = col - slot['col']
+                    if letter_idx < len(word):
+                        self.draw_letter(x, y, word[letter_idx])
+            else:  # down
+                if col == slot['col'] and slot['row'] <= row < slot['row'] + slot['length']:
+                    letter_idx = row - slot['row']
+                    if letter_idx < len(word):
+                        self.draw_letter(x, y, word[letter_idx])
     
     def update_info(self, message, color=None):
         """Update info message at top"""
@@ -844,8 +566,9 @@ class CrosswordDrawer:
         self.info.write(message, align="center",
                        font=("Arial", 18, "bold"))
     
-    def animate_word_placement(self, slot_id, word, slot, is_placing):
-        """Animate placing or removing a word"""
+    def animate_word_placement(self, slot_id, word, slot, is_placing, placements):
+        """Animate placing or removing a word (FIXED with placements tracking)"""
+        self.current_placements = placements
         start_x = -(self.cols * self.cell_size) / 2
         start_y = (self.rows * self.cell_size) / 2
         
@@ -866,12 +589,12 @@ class CrosswordDrawer:
                 
                 self.draw_letter(x, y, letter, self.colors['letter_placing'])
                 self.screen.update()
-                time.sleep(0.08)
+                time.sleep(0.05)  # Slightly faster
         else:
             self.update_info(f"Backtracking: {word.upper()} from slot {slot_id}", 
                            self.colors['letter_backtrack'])
             
-            for i, letter in enumerate(word):
+            for i in range(len(word)):
                 if direction == 'across':
                     r, c = row, col + i
                 else:
@@ -879,7 +602,7 @@ class CrosswordDrawer:
                 
                 self.clear_cell(r, c)
                 self.screen.update()
-                time.sleep(0.04)
+                time.sleep(0.03)
     
     def draw_solution(self, slots, solution, animated=False):
         """Draw the complete solved crossword"""
@@ -918,20 +641,18 @@ class CrosswordDrawer:
                 
                 self.draw_letter(x, y, letter, self.colors['letter'])
         
-        self.update_info("✓ PUZZLE SOLVED!", self.colors['letter_placing'])
         self.screen.update()
+        self.update_info("✓ PUZZLE SOLVED!", self.colors['letter_placing'])
         print("\n✓ Close window to exit")
         turtle.done()
 
 
 def print_ascii_grid(grid, solution, slots):
-    """Print the crossword grid in ASCII format with letters placed correctly"""
-    # Create a copy of the grid for filling
+    """Print the crossword grid in ASCII format"""
     rows = len(grid)
     cols = len(grid[0]) if grid else 0
-    filled_grid = [row[:] for row in grid]  # Deep copy
+    filled_grid = [row[:] for row in grid]
     
-    # Place all solution words into the grid
     for slot_id, word in solution:
         slot = slots[slot_id]
         row, col = slot['row'], slot['col']
@@ -940,10 +661,9 @@ def print_ascii_grid(grid, solution, slots):
         for i, letter in enumerate(word):
             if direction == 'across':
                 filled_grid[row][col + i] = letter.upper()
-            else:  # down
+            else:
                 filled_grid[row + i][col] = letter.upper()
     
-    # Print the grid in ASCII format
     print("\n" + "=" * (cols * 4 + 1))
     print("SOLVED CROSSWORD GRID (ASCII)")
     print("=" * (cols * 4 + 1))
@@ -966,54 +686,34 @@ def print_ascii_grid(grid, solution, slots):
 def main():
     """Main program entry point"""
     print("=" * 70)
-    print("   CROSSWORD PUZZLE SOLVER")
+    print("   CROSSWORD PUZZLE SOLVER (FIXED VERSION)")
     print("   Confidence-Based Heuristic + Full Backtracking")
     print("=" * 70)
     
-    # Read grid
     print("\n[1] Reading grid...")
     grid_reader = GridReader("grid.txt")
     print(f"    Grid: {grid_reader.rows} x {grid_reader.cols}")
     
-    # Find slots
     print("\n[2] Finding slots...")
     slots = grid_reader.find_slots()
     print(f"    Found {len(slots)} slots:")
     for slot in slots:
         print(f"      Slot {slot['id']}: {slot['direction']:6} at ({slot['row']},{slot['col']}) len={slot['length']}")
     
-    # Create drawer
     print("\n[3] Initializing graphics...")
     drawer = CrosswordDrawer(grid_reader.grid, cell_size=60, animate=True)
     drawer.draw_grid()
     
-    # Choose solver
     print("\n[4] Initializing solver...")
-    use_prolog = False
-    if PROLOG_AVAILABLE:
-        try:
-            solver = PrologCrosswordSolver("crossword_solver.pl")
-            use_prolog = True
-        except:
-            print("    Falling back to Python solver...")
-            solver = PythonCrosswordSolver()
-    else:
-        solver = PythonCrosswordSolver()
-    
-    # Set up step callback for both solvers
+    solver = PythonCrosswordSolver()
     solver.set_step_callback(drawer.animate_word_placement)
     
-    # Load data
     print("\n[5] Loading data...")
     solver.load_slots(slots)
     solver.load_words("word.txt")
     solver.load_constraints("constraints.txt", slots)
     
-    # Solve
     print("\n[6] Solving with confidence-based heuristic...")
-    print("    The solver will prioritize high-confidence word placements!")
-    if not use_prolog:
-        print("    Watch the window to see the heuristic in action!")
     
     slot_ids = [s['id'] for s in slots]
     start_time = time.time()
@@ -1027,10 +727,7 @@ def main():
             slot = slots[slot_id]
             print(f"  Slot {slot_id} ({slot['direction']:6} at {slot['row']},{slot['col']}): {word.upper()}")
         
-        # Print ASCII grid with solution
         print_ascii_grid(grid_reader.grid, solution, slots)
-        
-        # Draw solution
         drawer.draw_solution(slots, solution, animated=True)
     else:
         print(f"\n✗ No solution found (searched for {end_time - start_time:.2f} seconds)")
