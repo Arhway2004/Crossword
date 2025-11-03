@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 _____X_X
 X_X_X___
 _______X
@@ -6,3 +7,17 @@ ___X_X_X
 X_______
 ___X_X_X
 X_X_____
+=======
+XXXXX_
+_____X
+______
+___XXX
+______
+______
+XXXX_X
+_____X
+_____X
+__XXXX
+______
+XXXXX_
+>>>>>>> 6396c5e (attempt to read non-uniformed puzzle)

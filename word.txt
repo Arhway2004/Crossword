@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 SKIRT
 SNOWMAN
 NOD
@@ -11,3 +12,19 @@ DINOSAUR
 GIFT
 FAN
 FIX
+=======
+after
+again
+box
+could
+every
+from
+know
+open
+put
+some
+stop
+walk
+where
+word
+>>>>>>> 6396c5e (attempt to read non-uniformed puzzle)
