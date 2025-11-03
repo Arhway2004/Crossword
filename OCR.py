@@ -17,7 +17,7 @@ import argparse
 class CrosswordExtractor:
     """Extract crossword grid and clues from images"""
     
-    def __init__(self, image_path: str, debug: bool = False, rows: int = 10, cols: int = 10):
+    def __init__(self, rows, cols, image_path: str, debug: bool = False):
         self.rows = rows
         self.cols = cols
         self.image_path = image_path
@@ -150,10 +150,10 @@ class CrosswordExtractor:
             cols = len(v_lines) - 1
         else:
             # Fallback: try to estimate based on image size
-            cell_size_w = w // getattr(self, "cols", 10)
-            cell_size_h = h // getattr(self, "rows", 10)
-            rows = getattr(self, "rows", 10)
-            cols = getattr(self, "cols", 10)
+            cell_size_w = w // getattr(self, "cols", self.cols)
+            cell_size_h = h // getattr(self, "rows", self.rows)
+            rows = getattr(self, "rows", self.rows)
+            cols = getattr(self, "cols", self.cols)
 
             h_lines = [i * cell_size_h for i in range(rows + 1)]
             v_lines = [i * cell_size_w for i in range(cols + 1)]
@@ -432,14 +432,16 @@ def main():
     """Run crossword extraction with optional size parameters"""
     parser = argparse.ArgumentParser(description="Crossword Puzzle Image Extractor")
     parser.add_argument("--image", type=str, required=True, help="Path to crossword image")
-    parser.add_argument("--rows", type=int, default=10, help="Number of rows in grid (default: 15)")
-    parser.add_argument("--cols", type=int, default=10, help="Number of columns in grid (default: 15)")
+    parser.add_argument("--rows", type=int, help="Number of rows in grid (default: 15)")
+    parser.add_argument("--cols", type=int, help="Number of columns in grid (default: 15)")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     parser.add_argument("--outdir", type=str, default=".", help="Output directory for results")
 
     args = parser.parse_args()
 
-    extractor = CrosswordExtractor(args.image, debug=args.debug)
+    # extractor = CrosswordExtractor(args.image, debug=args.debug)
+    extractor = CrosswordExtractor(args.rows, args.cols, args.image, debug=args.debug)
+
 
     # Pass dynamic size to grid extraction
     extractor.save_results(
