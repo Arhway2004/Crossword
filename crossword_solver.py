@@ -1,7 +1,7 @@
 """
 ============================================================================
 CROSSWORD PUZZLE SOLVER - PYTHON MAIN PROGRAM
-Beautiful UI with Full Backtracking & Intersection Detection
+Beautiful UI with Full Backtracking & Confidence-Based Heuristic
 ============================================================================
 Run: python crossword_solver.py
 
@@ -12,7 +12,7 @@ Requirements:
 - SWI-Prolog installed (for Prolog solver)
 
 Files needed:
-- crossword_solver.pl (Prolog rules - will be auto-created if missing)
+- crossword_solver.pl (Prolog rules - confidence heuristic version)
 - grid.txt (crossword grid)
 - word.txt or words.txt (word list)
 - constraints.txt (optional pattern constraints)
@@ -160,15 +160,17 @@ ___XXXX"""
 
 
 class PrologCrosswordSolver:
-    """Interface to Prolog solver for constraint satisfaction"""
+    """Interface to Prolog solver with confidence-based heuristic"""
     
     def __init__(self, prolog_file="crossword_solver.pl"):
         if not PROLOG_AVAILABLE:
             raise ImportError("pyswip not available")
         
         self.prolog = Prolog()
+        self.step_callback = None
+        self.slots = []
         
-        # Check if Prolog file exists, if not create it
+        # Check if Prolog file exists
         if not os.path.exists(prolog_file):
             print(f"WARNING: {prolog_file} not found!")
             print("Please make sure crossword_solver.pl is in the same directory.")
@@ -176,13 +178,18 @@ class PrologCrosswordSolver:
         
         try:
             self.prolog.consult(prolog_file)
-            print(f"✓ Solver choice: Using Prolog solver from {prolog_file}")
+            print(f"✓ Solver choice: Using Prolog solver with confidence heuristic from {prolog_file}")
         except Exception as e:
             print(f"ERROR loading Prolog: {e}")
             raise
     
+    def set_step_callback(self, callback):
+        """Set callback function to visualize each step"""
+        self.step_callback = callback
+    
     def load_slots(self, slots):
         """Load slot definitions into Prolog"""
+        self.slots = slots
         for slot in slots:
             query = f"assertz(slot({slot['id']}, {slot['direction']}, " \
                    f"{slot['row']}, {slot['col']}, {slot['length']}))"
@@ -277,12 +284,22 @@ class PrologCrosswordSolver:
             print(f"  No {filename} found (constraints are optional)")
     
     def solve(self, slot_ids):
-        """Solve using Prolog backtracking"""
+        """Solve using Prolog backtracking with confidence heuristic and visualization"""
         list(self.prolog.query("clear_placements"))
+        
+        # Use iterative approach with Python controlling the visualization
+        if self.step_callback:
+            return self.solve_with_visualization(slot_ids)
+        else:
+            return self.solve_direct(slot_ids)
+    
+    def solve_direct(self, slot_ids):
+        """Direct Prolog solve without visualization"""
         slot_list = str(slot_ids).replace(' ', '')
         query = f"solve_crossword({slot_list}, Solution)"
         
         print(f"  Prolog query: {query}")
+        print(f"  Using confidence-based heuristic for faster solving...")
         
         try:
             solutions = list(self.prolog.query(query))
@@ -298,17 +315,123 @@ class PrologCrosswordSolver:
         except Exception as e:
             print(f"Prolog error: {e}")
             return None
+    
+    def solve_with_visualization(self, slot_ids):
+        """Solve with step-by-step visualization using Python backtracking over Prolog choices"""
+        placements = {}
+        used_words = set()
+        
+        def get_candidates_for_slot(slot_id):
+            """Get all valid candidate words from Prolog for a slot"""
+            candidates = []
+            slot = self.slots[slot_id]
+            
+            # Query Prolog for words with confidence
+            try:
+                # First, try to get candidates with confidence >= 1
+                query = f"""
+                    word(W), 
+                    slot({slot_id}, _, _, _, Len), 
+                    atom_length(W, Len),
+                    \\+ placement(_, W),
+                    (constraint({slot_id}, P) -> matches_pattern(W, P) ; true),
+                    confidence({slot_id}, W, Conf),
+                    Conf >= 1
+                """
+                results = list(self.prolog.query(query))
+                
+                if results:
+                    for result in results:
+                        word = str(result['W'])
+                        if word not in used_words:
+                            candidates.append(word)
+                
+                # Fallback: if no high-confidence candidates, get any valid word
+                if not candidates:
+                    query = f"""
+                        word(W), 
+                        slot({slot_id}, _, _, _, Len), 
+                        atom_length(W, Len),
+                        \\+ placement(_, W),
+                        (constraint({slot_id}, P) -> matches_pattern(W, P) ; true)
+                    """
+                    results = list(self.prolog.query(query))
+                    for result in results:
+                        word = str(result['W'])
+                        if word not in used_words:
+                            candidates.append(word)
+            
+            except Exception as e:
+                print(f"  Warning: Error querying candidates: {e}")
+            
+            return candidates
+        
+        def backtrack(slot_idx):
+            if slot_idx >= len(slot_ids):
+                return True
+            
+            slot_id = slot_ids[slot_idx]
+            slot = self.slots[slot_id]
+            
+            # Get candidates from Prolog
+            candidates = get_candidates_for_slot(slot_id)
+            
+            for word in candidates:
+                if word in used_words:
+                    continue
+                
+                # Try placing this word in Prolog
+                query = f"assertz(placement({slot_id}, '{word}'))"
+                list(self.prolog.query(query))
+                placements[slot_id] = word
+                used_words.add(word)
+                
+                # Check if placement is valid
+                valid = True
+                try:
+                    check_query = f"check_all_constraints({slot_id}, '{word}')"
+                    results = list(self.prolog.query(check_query))
+                    valid = len(results) > 0
+                except:
+                    valid = False
+                
+                if valid:
+                    # Visualize placement
+                    if self.step_callback:
+                        self.step_callback(slot_id, word, slot, True)
+                    
+                    # Recurse
+                    if backtrack(slot_idx + 1):
+                        return True
+                
+                # Backtrack - visualize removal
+                if self.step_callback:
+                    self.step_callback(slot_id, word, slot, False)
+                
+                # Remove from Prolog
+                query = f"retract(placement({slot_id}, '{word}'))"
+                list(self.prolog.query(query))
+                del placements[slot_id]
+                used_words.remove(word)
+            
+            return False
+        
+        print(f"  Using Prolog with Python-controlled visualization...")
+        
+        if backtrack(0):
+            return [(sid, placements[sid]) for sid in slot_ids if sid in placements]
+        return None
 
 
 class PythonCrosswordSolver:
-    """Fallback Python-based solver with FULL BACKTRACKING"""
+    """Fallback Python-based solver with confidence heuristic"""
     
     def __init__(self):
         self.words = []
         self.constraints = {}
         self.slots = []
         self.step_callback = None
-        print("✓ Solver choice: Using Python solver with full backtracking")
+        print("✓ Solver choice: Using Python solver with confidence heuristic")
     
     def set_step_callback(self, callback):
         """Set callback function to visualize each step"""
@@ -411,7 +534,6 @@ class PythonCrosswordSolver:
         if slot1['direction'] == 'across' and slot2['direction'] == 'down':
             # ACROSS: row R1, columns C1 to C1+Len1-1
             # DOWN: column C2, rows R2 to R2+Len2-1
-            # Intersection if R1 is in [R2, R2+Len2-1] and C2 is in [C1, C1+Len1-1]
             if (slot2['row'] <= slot1['row'] < slot2['row'] + slot2['length'] and
                 slot1['col'] <= slot2['col'] < slot1['col'] + slot1['length']):
                 pos1 = slot2['col'] - slot1['col']  # Position in across word
@@ -421,7 +543,6 @@ class PythonCrosswordSolver:
         elif slot1['direction'] == 'down' and slot2['direction'] == 'across':
             # DOWN: column C1, rows R1 to R1+Len1-1
             # ACROSS: row R2, columns C2 to C2+Len2-1
-            # Intersection if R2 is in [R1, R1+Len1-1] and C1 is in [C2, C2+Len2-1]
             if (slot1['row'] <= slot2['row'] < slot1['row'] + slot1['length'] and
                 slot2['col'] <= slot1['col'] < slot2['col'] + slot2['length']):
                 pos1 = slot2['row'] - slot1['row']  # Position in down word
@@ -450,8 +571,66 @@ class PythonCrosswordSolver:
         
         return True
     
+    def calculate_confidence(self, slot_id, word, placements, used_words):
+        """
+        Calculate confidence score for placing a word in a slot.
+        Score = number of intersecting slots that still have valid candidates.
+        """
+        slot = self.slots[slot_id]
+        score = 0
+        
+        # Check all other slots
+        for other_slot in self.slots:
+            other_id = other_slot['id']
+            
+            # Skip same slot or already placed slots
+            if other_id == slot_id or other_id in placements:
+                continue
+            
+            # Only check opposite direction slots (potential intersections)
+            if slot['direction'] == other_slot['direction']:
+                continue
+            
+            # Check if they intersect
+            intersection = self.get_intersection(slot, other_slot)
+            if not intersection:
+                continue
+            
+            pos_in_slot, pos_in_other = intersection
+            letter = word[pos_in_slot]
+            
+            # Check if there exists at least one valid word for other_slot
+            # that has 'letter' at pos_in_other
+            candidate_exists = False
+            for candidate_word in self.words:
+                # Check length
+                if len(candidate_word) != other_slot['length']:
+                    continue
+                
+                # Check if already used
+                if candidate_word in used_words:
+                    continue
+                
+                # Check letter match at intersection
+                if candidate_word[pos_in_other] != letter:
+                    continue
+                
+                # Check constraint if exists
+                if other_id in self.constraints:
+                    if not self.matches_pattern(candidate_word, self.constraints[other_id]):
+                        continue
+                
+                # Found at least one valid candidate
+                candidate_exists = True
+                break
+            
+            if candidate_exists:
+                score += 1
+        
+        return score
+    
     def solve(self, slot_ids):
-        """Backtracking solver with FULL BACKTRACKING (can go back to root)"""
+        """Backtracking solver with confidence-based heuristic"""
         placements = {}
         used_words = set()
         
@@ -462,6 +641,8 @@ class PythonCrosswordSolver:
             slot_id = slot_ids[slot_idx]
             slot = self.slots[slot_id]
             
+            # Collect all valid candidates with their confidence scores
+            candidates = []
             for word in self.words:
                 # Check word length
                 if len(word) != slot['length']:
@@ -475,6 +656,26 @@ class PythonCrosswordSolver:
                 if slot_id in self.constraints:
                     if not self.matches_pattern(word, self.constraints[slot_id]):
                         continue
+                
+                # Calculate confidence score
+                confidence = self.calculate_confidence(slot_id, word, placements, used_words)
+                candidates.append((confidence, word))
+            
+            # Sort by confidence (highest first)
+            candidates.sort(reverse=True, key=lambda x: x[0])
+            
+            # Try candidates in order of confidence
+            for confidence, word in candidates:
+                # Prune if confidence is 0 and we have intersections
+                # (unless it's the only option or no intersections exist)
+                if confidence == 0 and len(candidates) > 1:
+                    # Check if this slot has any intersections at all
+                    has_intersections = any(
+                        self.get_intersection(slot, self.slots[other_id]) is not None
+                        for other_id in slot_ids if other_id != slot_id
+                    )
+                    if has_intersections:
+                        continue  # Skip this low-confidence candidate
                 
                 # Try this word
                 placements[slot_id] = word
@@ -533,7 +734,7 @@ class CrosswordDrawer:
         
         self.screen = turtle.Screen()
         self.screen.setup(width=width, height=height)
-        self.screen.title("Crossword Puzzle Solver - Full Backtracking")
+        self.screen.title("Crossword Puzzle Solver - Confidence Heuristic")
         self.screen.bgcolor(self.colors['background'])
         
         self.pen = turtle.Turtle()
@@ -766,7 +967,7 @@ def main():
     """Main program entry point"""
     print("=" * 70)
     print("   CROSSWORD PUZZLE SOLVER")
-    print("   Full Backtracking + Intersection Detection")
+    print("   Confidence-Based Heuristic + Full Backtracking")
     print("=" * 70)
     
     # Read grid
@@ -799,9 +1000,8 @@ def main():
     else:
         solver = PythonCrosswordSolver()
     
-    # Set up step callback for Python solver
-    if not use_prolog:
-        solver.set_step_callback(drawer.animate_word_placement)
+    # Set up step callback for both solvers
+    solver.set_step_callback(drawer.animate_word_placement)
     
     # Load data
     print("\n[5] Loading data...")
@@ -810,13 +1010,18 @@ def main():
     solver.load_constraints("constraints.txt", slots)
     
     # Solve
-    print("\n[6] Solving with full backtracking...")
-    print("    Watch the window to see backtracking in action!")
+    print("\n[6] Solving with confidence-based heuristic...")
+    print("    The solver will prioritize high-confidence word placements!")
+    if not use_prolog:
+        print("    Watch the window to see the heuristic in action!")
+    
     slot_ids = [s['id'] for s in slots]
+    start_time = time.time()
     solution = solver.solve(slot_ids)
+    end_time = time.time()
     
     if solution:
-        print(f"\n✓ Solution found!")
+        print(f"\n✓ Solution found in {end_time - start_time:.2f} seconds!")
         print("\nFinal solution:")
         for slot_id, word in solution:
             slot = slots[slot_id]
@@ -825,10 +1030,10 @@ def main():
         # Print ASCII grid with solution
         print_ascii_grid(grid_reader.grid, solution, slots)
         
-        # Always call draw_solution with animation
+        # Draw solution
         drawer.draw_solution(slots, solution, animated=True)
     else:
-        print("\n✗ No solution found")
+        print(f"\n✗ No solution found (searched for {end_time - start_time:.2f} seconds)")
         drawer.draw_solution(slots, None)
 
 
