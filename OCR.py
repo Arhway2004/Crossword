@@ -1,5 +1,5 @@
 """
-Crossword Puzzle Image Extractor
+Crossword Puzzle Image Extractor - Improved Grid Detection
 Extracts grid layout and clues from crossword puzzle images using OCR
 """
 
@@ -11,7 +11,6 @@ import re
 import os
 from typing import Tuple, List, Optional
 import argparse
-
 
 
 class CrosswordExtractor:
@@ -98,6 +97,152 @@ class CrosswordExtractor:
         
         return (x, y, w, h)
     
+    def _rotate_and_align(self, binary: np.ndarray) -> np.ndarray:
+        """
+        Detect and correct rotation of the grid
+        
+        Args:
+            binary: Binary image of grid
+            
+        Returns:
+            Rotation-corrected binary image
+        """
+        h, w = binary.shape[:2]
+        coords = np.column_stack(np.where(binary > 0))
+        
+        if len(coords) == 0:
+            return binary
+        
+        angle = cv2.minAreaRect(coords)[-1]
+        
+        # Normalize angle
+        if angle < -45:
+            angle = -(90 + angle)
+        else:
+            angle = -angle
+        
+        # Only rotate if angle is significant
+        if abs(angle) > 0.5:
+            print(f"Rotating grid by {angle:.2f} degrees")
+            M = cv2.getRotationMatrix2D((w//2, h//2), angle, 1.0)
+            binary = cv2.warpAffine(binary, M, (w, h), 
+                                   flags=cv2.INTER_CUBIC, 
+                                   borderMode=cv2.BORDER_REPLICATE)
+            
+            if self.debug:
+                cv2.imwrite("debug_rotated.png", binary)
+        
+        return binary
+    
+    def _detect_grid_lines_morphology(self, binary: np.ndarray) -> Tuple[List[int], List[int]]:
+        """
+        Detect grid lines using morphological operations
+        
+        Args:
+            binary: Binary image of grid
+            
+        Returns:
+            Tuple of (horizontal_lines, vertical_lines) as lists of y and x coordinates
+        """
+        h, w = binary.shape[:2]
+        
+        # Create kernels for detecting lines
+        # Horizontal lines: wide and short
+        kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (w//10, 1))
+        # Vertical lines: tall and narrow
+        kernel_v = cv2.getStructuringElement(cv2.MORPH_RECT, (1, h//10))
+        
+        # Extract horizontal and vertical lines
+        horizontal = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel_h)
+        vertical = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel_v)
+        
+        if self.debug:
+            cv2.imwrite("debug_horizontal_lines.png", horizontal)
+            cv2.imwrite("debug_vertical_lines.png", vertical)
+        
+        # Find line positions using projection profiles
+        h_projection = np.sum(horizontal, axis=1)
+        v_projection = np.sum(vertical, axis=0)
+        
+        # Find peaks in projections
+        h_lines = self._find_peaks(h_projection, min_distance=h//20)
+        v_lines = self._find_peaks(v_projection, min_distance=w//20)
+        
+        print(f"Detected {len(h_lines)} horizontal and {len(v_lines)} vertical lines")
+        
+        return h_lines, v_lines
+    
+    def _find_peaks(self, signal: np.ndarray, min_distance: int) -> List[int]:
+        """
+        Find peaks in a 1D signal with minimum distance constraint
+        
+        Args:
+            signal: 1D array of signal values
+            min_distance: Minimum distance between peaks
+            
+        Returns:
+            List of peak positions
+        """
+        # Threshold: peaks should be above mean
+        threshold = np.mean(signal) + 0.5 * np.std(signal)
+        
+        peaks = []
+        i = 0
+        while i < len(signal):
+            if signal[i] > threshold:
+                # Find local maximum in window
+                window_end = min(i + min_distance, len(signal))
+                local_max_idx = i + np.argmax(signal[i:window_end])
+                peaks.append(local_max_idx)
+                i = local_max_idx + min_distance
+            else:
+                i += 1
+        
+        return peaks
+    
+    def _estimate_grid_dimensions(self, h_lines: List[int], v_lines: List[int], 
+                                  w: int, h: int) -> Tuple[int, int, List[int], List[int]]:
+        """
+        Estimate grid dimensions and regularize line positions
+        
+        Args:
+            h_lines: Detected horizontal line positions
+            v_lines: Detected vertical line positions
+            w: Width of grid image
+            h: Height of grid image
+            
+        Returns:
+            Tuple of (rows, cols, regularized_h_lines, regularized_v_lines)
+        """
+        # If we have good line detection, use it
+        if len(h_lines) >= 2 and len(v_lines) >= 2:
+            rows = len(h_lines) - 1
+            cols = len(v_lines) - 1
+            
+            # Check if detected dimensions are close to expected
+            if self.rows and abs(rows - self.rows) > 3:
+                print(f"Warning: Detected {rows} rows but expected {self.rows}")
+            if self.cols and abs(cols - self.cols) > 3:
+                print(f"Warning: Detected {cols} cols but expected {self.cols}")
+            
+            print(f"Using detected grid dimensions: {rows}x{cols}")
+            return rows, cols, h_lines, v_lines
+        
+        # Fallback: use provided dimensions or default
+        rows = self.rows if self.rows else 15
+        cols = self.cols if self.cols else 15
+        
+        print(f"Using fallback grid dimensions: {rows}x{cols}")
+        
+        # Create evenly spaced grid lines
+        cell_height = h / rows
+        cell_width = w / cols
+        
+        h_lines = [int(i * cell_height) for i in range(rows + 1)]
+        v_lines = [int(i * cell_width) for i in range(cols + 1)]
+        
+        return rows, cols, h_lines, v_lines
+    
     def _extract_grid_layout(self, grid_region: Tuple[int, int, int, int]) -> List[List[str]]:
         """
         Extract the grid layout from the detected region
@@ -111,89 +256,92 @@ class CrosswordExtractor:
         print("Extracting grid layout...")
         
         x, y, w, h = grid_region
-        grid_img = self.image[y:y+h, x:x+w]
+        grid_img = self.image[y:y+h, x:x+w].copy()
         
-        # Convert to grayscale
+        # Convert to grayscale and apply Gaussian blur
         gray = cv2.cvtColor(grid_img, cv2.COLOR_BGR2GRAY)
+        blur = cv2.GaussianBlur(gray, (3, 3), 0)
         
-        # Apply binary threshold
-        _, binary = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV)
+        # Apply adaptive threshold with optimized parameters
+        binary = cv2.adaptiveThreshold(
+            blur, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+            cv2.THRESH_BINARY_INV, 15, 3
+        )
         
         if self.debug:
             cv2.imwrite("debug_grid_binary.png", binary)
         
-        # Detect grid lines using Hough transform
-        edges = cv2.Canny(binary, 50, 150)
-        lines = cv2.HoughLinesP(edges, 1, np.pi/180, 100, minLineLength=w//4, maxLineGap=10)
+        # Rotate and align if needed
+        binary = self._rotate_and_align(binary)
         
-        # Separate horizontal and vertical lines
-        h_lines = []
-        v_lines = []
+        # Detect grid lines using morphology
+        h_lines, v_lines = self._detect_grid_lines_morphology(binary)
         
-        if lines is not None:
-            for line in lines:
-                x1, y1, x2, y2 = line[0]
-                angle = np.abs(np.arctan2(y2 - y1, x2 - x1) * 180 / np.pi)
-                
-                if angle < 10 or angle > 170:  # Horizontal
-                    h_lines.append((min(y1, y2), max(y1, y2)))
-                elif 80 < angle < 100:  # Vertical
-                    v_lines.append((min(x1, x2), max(x1, x2)))
+        # Estimate dimensions and regularize lines
+        rows, cols, h_lines, v_lines = self._estimate_grid_dimensions(
+            h_lines, v_lines, w, h
+        )
         
-        # Cluster lines to find grid structure
-        h_lines = sorted(set([y[0] for y in h_lines]))
-        v_lines = sorted(set([x[0] for x in v_lines]))
+        # Debug: draw detected lines
+        if self.debug:
+            debug_lines = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+            for y_pos in h_lines:
+                cv2.line(debug_lines, (0, y_pos), (w, y_pos), (0, 255, 0), 1)
+            for x_pos in v_lines:
+                cv2.line(debug_lines, (x_pos, 0), (x_pos, h), (255, 0, 0), 1)
+            cv2.imwrite("debug_lines.png", debug_lines)
         
-        # Estimate grid dimensions
-        if len(h_lines) > 1 and len(v_lines) > 1:
-            rows = len(h_lines) - 1
-            cols = len(v_lines) - 1
-        else:
-            # Fallback: try to estimate based on image size
-            cell_size_w = w // getattr(self, "cols", self.cols)
-            cell_size_h = h // getattr(self, "rows", self.rows)
-            rows = getattr(self, "rows", self.rows)
-            cols = getattr(self, "cols", self.cols)
-
-            h_lines = [i * cell_size_h for i in range(rows + 1)]
-            v_lines = [i * cell_size_w for i in range(cols + 1)]
-
-        
-        print(f"Detected grid dimensions: {rows}x{cols}")
-        
-        # Extract cell states (filled or empty)
+        # Extract cell states
         grid = []
         for r in range(rows):
             row = []
             for c in range(cols):
-                # Get cell boundaries
-                y1 = h_lines[r] + 2  # Small padding to avoid borders
-                y2 = h_lines[r + 1] - 2
-                x1 = v_lines[c] + 2
-                x2 = v_lines[c + 1] - 2
+                # Get cell boundaries with padding
+                y1 = h_lines[r] + 3
+                y2 = h_lines[r + 1] - 3
+                x1 = v_lines[c] + 3
+                x2 = v_lines[c + 1] - 3
                 
-                # Extract cell
-                cell = binary[y1:y2, x1:x2]
+                # Ensure valid bounds
+                y1, y2 = max(0, y1), min(h, y2)
+                x1, x2 = max(0, x1), min(w, x2)
+                
+                if y2 <= y1 or x2 <= x1:
+                    row.append('_')
+                    continue
+                
+                # Extract cell from original grayscale (not binary)
+                cell = gray[y1:y2, x1:x2]
                 
                 if cell.size == 0:
                     row.append('_')
                     continue
                 
-                # Calculate darkness ratio
-                darkness = np.sum(cell == 255) / cell.size
+                # Calculate darkness using median for robustness
+                dark_ratio = np.mean(cell < 128)
                 
                 # Threshold: if more than 60% dark, it's filled
-                if darkness > 0.6:
+                if dark_ratio > 0.6:
                     row.append('X')
                 else:
                     row.append('_')
             
             grid.append(row)
         
+        # Post-processing: check if we need to invert
+        total_cells = rows * cols
+        filled_cells = sum(row.count('X') for row in grid)
+        filled_ratio = filled_cells / total_cells
+        
+        if filled_ratio > 0.6:
+            print(f"Warning: {filled_ratio*100:.1f}% cells are filled. Inverting grid...")
+            grid = [['_' if cell == 'X' else 'X' for cell in row] for row in grid]
+        
         if self.debug:
-            print("Grid preview:")
+            print("\nGrid preview:")
             for row in grid:
                 print(''.join(row))
+            print(f"\nFilled cells: {sum(row.count('X') for row in grid)}/{total_cells}")
         
         return grid
     
@@ -432,18 +580,15 @@ def main():
     """Run crossword extraction with optional size parameters"""
     parser = argparse.ArgumentParser(description="Crossword Puzzle Image Extractor")
     parser.add_argument("--image", type=str, required=True, help="Path to crossword image")
-    parser.add_argument("--rows", type=int, help="Number of rows in grid (default: 15)")
-    parser.add_argument("--cols", type=int, help="Number of columns in grid (default: 15)")
+    parser.add_argument("--rows", type=int, help="Number of rows in grid (default: auto-detect)")
+    parser.add_argument("--cols", type=int, help="Number of columns in grid (default: auto-detect)")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     parser.add_argument("--outdir", type=str, default=".", help="Output directory for results")
 
     args = parser.parse_args()
 
-    # extractor = CrosswordExtractor(args.image, debug=args.debug)
     extractor = CrosswordExtractor(args.rows, args.cols, args.image, debug=args.debug)
 
-
-    # Pass dynamic size to grid extraction
     extractor.save_results(
         os.path.join(args.outdir, "grid.txt"),
         os.path.join(args.outdir, "word.txt")
