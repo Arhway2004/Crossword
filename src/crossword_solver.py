@@ -419,32 +419,6 @@ class PythonCrosswordSolver:
         self.slots = slots
 
     def load_words(self, filename):
-<<<<<<< HEAD:crossword_solver.py
-        # Try word.txt first, then words.txt
-        filenames = [filename, "word.txt", "words.txt"]
-        loaded = False
-
-        for fname in filenames:
-            try:
-                with open(fname, "r") as f:
-                    self.words = []
-                    for line in f:
-                        word = line.strip().lower()
-                        if word:
-                            word = word.replace("'", "_")
-                            self.words.append(word)
-                    print(f"✓ Loaded {len(self.words)} words from {fname}")
-                    loaded = True
-                    break
-            except FileNotFoundError:
-                continue
-
-        if not loaded:
-            self.words = ["dog", "doctor", "rat"]
-            with open("word.txt", "w") as f:
-                f.write("\n".join(self.words))
-            print("✓ Created sample word.txt with default words")
-=======
         loaded = False
 
         if filename == "":
@@ -462,7 +436,6 @@ class PythonCrosswordSolver:
                 loaded = True
         except FileNotFoundError:
             print(f"ERROR: {filename} not found!")
->>>>>>> 6396c5e (attempt to read non-uniformed puzzle):src/crossword_solver.py
 
     def load_constraints(self, filename, slots):
         try:
@@ -481,11 +454,7 @@ class PythonCrosswordSolver:
                             pattern = parts[1].strip()
                         except ValueError:
                             print(
-<<<<<<< HEAD:crossword_solver.py
                                 f"  Warning: Invalid slot_id in line {line_idx + 1}, skipping"
-=======
-                                f"  Warning: Invalid slot_id in line {line_idx+1}, skipping"
->>>>>>> 6396c5e (attempt to read non-uniformed puzzle):src/crossword_solver.py
                             )
                             continue
                     else:
@@ -993,13 +962,13 @@ def print_ascii_grid(grid, solution, slots):
 
 def main():
     """Main program entry point"""
-<<<<<<< HEAD:crossword_solver.py
     # Check for command-line arguments
     nogui = "--nogui" in sys.argv or "-n" in sys.argv
-=======
     wordlist = sys.argv[1] if len(sys.argv) > 1 else "word.txt"
     grid = sys.argv[2] if len(sys.argv) > 2 else "grid.txt"
->>>>>>> 6396c5e (attempt to read non-uniformed puzzle):src/crossword_solver.py
+
+    # Check for command-line arguments
+    nogui = "--nogui" in sys.argv or "-n" in sys.argv
 
     print("=" * 70)
     print("   CROSSWORD PUZZLE SOLVER (FIXED VERSION)")
@@ -1020,7 +989,6 @@ def main():
             f"      Slot {slot['id']}: {slot['direction']:6} at ({slot['row']},{slot['col']}) len={slot['length']}"
         )
 
-<<<<<<< HEAD:crossword_solver.py
     # Initialize graphics only if not in nogui mode
     drawer = None
     if not nogui:
@@ -1050,26 +1018,11 @@ def main():
         solver.set_step_callback(drawer.animate_word_placement)
 
     print(f"\n[{'5' if nogui else '5'}] Loading data...")
-=======
-    print("\n[3] Initializing graphics...")
-    drawer = CrosswordDrawer(grid_reader.grid, cell_size=60, animate=True)
-    drawer.draw_grid()
-
-    print("\n[4] Initializing solver...")
-    solver = PythonCrosswordSolver()
-    solver.set_step_callback(drawer.animate_word_placement)
-
-    print("\n[5] Loading data...")
->>>>>>> 6396c5e (attempt to read non-uniformed puzzle):src/crossword_solver.py
     solver.load_slots(slots)
     solver.load_words(str(wordlist))
     solver.load_constraints("constraints.txt", slots)
 
-<<<<<<< HEAD:crossword_solver.py
     print(f"\n[{'6' if nogui else '6'}] Solving with confidence-based heuristic...")
-=======
-    print("\n[6] Solving with confidence-based heuristic...")
->>>>>>> 6396c5e (attempt to read non-uniformed puzzle):src/crossword_solver.py
 
     slot_ids = [s["id"] for s in slots]
     start_time = time.time()
@@ -1095,11 +1048,19 @@ def main():
                 print(
                     "  Use 'python3 crossword_solver.py' (without --nogui) for visual display"
                 )
+
+        if drawer and not nogui:
+            drawer.draw_solution(slots, solution, animated=True)
+        else:
+            print("\n✓ Crossword solved successfully!")
+            if nogui:
+                print(
+                    "  Use 'python3 crossword_solver.py' (without --nogui) for visual display"
+                )
     else:
         print(
             f"\n✗ No solution found (searched for {end_time - start_time:.2f} seconds)"
         )
-<<<<<<< HEAD:crossword_solver.py
         if drawer and not nogui:
             drawer.draw_solution(slots, None)
 
@@ -1112,10 +1073,3 @@ if __name__ == "__main__":
         print("  --help, -h     Show this help message")
     else:
         main()
-=======
-        drawer.draw_solution(slots, None)
-
-
-if __name__ == "__main__":
-    main()
->>>>>>> 6396c5e (attempt to read non-uniformed puzzle):src/crossword_solver.py

@@ -1,4 +1,7 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 9ab95c2 (integrate with prolog (logic still not working for other puzzle))
 _____X_X
 X_X_X___
 _______X
@@ -7,6 +10,7 @@ ___X_X_X
 X_______
 ___X_X_X
 X_X_____
+<<<<<<< HEAD
 =======
 XXXXX_
 _____X
@@ -21,3 +25,5 @@ __XXXX
 ______
 XXXXX_
 >>>>>>> 6396c5e (attempt to read non-uniformed puzzle)
+=======
+>>>>>>> 9ab95c2 (integrate with prolog (logic still not working for other puzzle))
