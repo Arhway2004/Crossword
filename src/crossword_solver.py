@@ -213,7 +213,7 @@ class PrologCrosswordSolver:
             col = slot["col"]
             length = slot["length"]
 
-            query = f"assertz(slot({slot_id}, {direction}, {row}, {col}, {length}))"
+            query = f"assertz(slot({slot_id}, {direction.lower()}, {row}, {col}, {length}))"
             list(self.prolog.query(query))
 
     def load_words(self, filename):
@@ -419,23 +419,30 @@ class PythonCrosswordSolver:
         self.slots = slots
 
     def load_words(self, filename):
+        # Try word.txt first, then words.txt
+        filenames = [filename, "word.txt", "words.txt"]
         loaded = False
 
-        if filename == "":
-            raise ValueError("No wordlist filename provided")
+        for fname in filenames:
+            try:
+                with open(fname, "r") as f:
+                    self.words = []
+                    for line in f:
+                        word = line.strip().lower()
+                        if word:
+                            word = word.replace("'", "_")
+                            self.words.append(word)
+                    print(f"✓ Loaded {len(self.words)} words from {fname}")
+                    loaded = True
+                    break
+            except FileNotFoundError:
+                continue
 
-        try:
-            with open(filename, "r") as f:
-                self.words = []
-                for line in f:
-                    word = line.strip().lower()
-                    if word:
-                        word = word.replace("'", "_")
-                        self.words.append(word)
-                print(f"✓ Loaded {len(self.words)} words from {filename}")
-                loaded = True
-        except FileNotFoundError:
-            print(f"ERROR: {filename} not found!")
+        if not loaded:
+            self.words = ["dog", "doctor", "rat"]
+            with open("word.txt", "w") as f:
+                f.write("\n".join(self.words))
+            print("✓ Created sample word.txt with default words")
 
     def load_constraints(self, filename, slots):
         try:
@@ -964,11 +971,6 @@ def main():
     """Main program entry point"""
     # Check for command-line arguments
     nogui = "--nogui" in sys.argv or "-n" in sys.argv
-    grid = sys.argv[1] if len(sys.argv) > 1 else "grid.txt"
-    wordlist = sys.argv[2] if len(sys.argv) > 2 else "word.txt"
-
-    # Check for command-line arguments
-    nogui = "--nogui" in sys.argv or "-n" in sys.argv
 
     print("=" * 70)
     print("   CROSSWORD PUZZLE SOLVER (FIXED VERSION)")
@@ -978,7 +980,7 @@ def main():
     print("=" * 70)
 
     print("\n[1] Reading grid...")
-    grid_reader = GridReader(str(grid))
+    grid_reader = GridReader("grid.txt")
     print(f"    Grid: {grid_reader.rows} x {grid_reader.cols}")
 
     print("\n[2] Finding slots...")
@@ -1019,7 +1021,7 @@ def main():
 
     print(f"\n[{'5' if nogui else '5'}] Loading data...")
     solver.load_slots(slots)
-    solver.load_words(str(wordlist))
+    solver.load_words("word.txt")
     solver.load_constraints("constraints.txt", slots)
 
     print(f"\n[{'6' if nogui else '6'}] Solving with confidence-based heuristic...")
@@ -1039,15 +1041,6 @@ def main():
             )
 
         print_ascii_grid(grid_reader.grid, solution, slots)
-
-        if drawer and not nogui:
-            drawer.draw_solution(slots, solution, animated=True)
-        else:
-            print("\n✓ Crossword solved successfully!")
-            if nogui:
-                print(
-                    "  Use 'python3 crossword_solver.py' (without --nogui) for visual display"
-                )
 
         if drawer and not nogui:
             drawer.draw_solution(slots, solution, animated=True)

@@ -61,7 +61,8 @@ class CrosswordExtractor:
         )
         
         if self.debug:
-            cv2.imwrite("debug_threshold.png", thresh)
+            os.makedirs("debug_image", exist_ok=True)
+            cv2.imwrite("debug_image/debug_threshold.png", thresh)
         
         # Find contours
         contours, _ = cv2.findContours(
@@ -93,7 +94,8 @@ class CrosswordExtractor:
         if self.debug:
             debug_img = self.image.copy()
             cv2.rectangle(debug_img, (x, y), (x+w, y+h), (0, 255, 0), 3)
-            cv2.imwrite("debug_grid_region.png", debug_img)
+            os.makedirs("debug_image", exist_ok=True)
+            cv2.imwrite("debug_image/debug_grid_region.png", debug_img)
         
         return (x, y, w, h)
     
@@ -130,7 +132,8 @@ class CrosswordExtractor:
                                    borderMode=cv2.BORDER_REPLICATE)
             
             if self.debug:
-                cv2.imwrite("debug_rotated.png", binary)
+                os.makedirs("debug_image", exist_ok=True)
+                cv2.imwrite("debug_image/debug_rotated.png", binary)
         
         return binary
     
@@ -157,8 +160,9 @@ class CrosswordExtractor:
         vertical = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel_v)
         
         if self.debug:
-            cv2.imwrite("debug_horizontal_lines.png", horizontal)
-            cv2.imwrite("debug_vertical_lines.png", vertical)
+            os.makedirs("debug_image", exist_ok=True)
+            cv2.imwrite("debug_image/debug_horizontal_lines.png", horizontal)
+            cv2.imwrite("debug_image/debug_vertical_lines.png", vertical)
         
         # Find line positions using projection profiles
         h_projection = np.sum(horizontal, axis=1)
@@ -269,7 +273,8 @@ class CrosswordExtractor:
         )
         
         if self.debug:
-            cv2.imwrite("debug_grid_binary.png", binary)
+            os.makedirs("debug_image", exist_ok=True)
+            cv2.imwrite("debug_image/debug_grid_binary.png", binary)
         
         # Rotate and align if needed
         binary = self._rotate_and_align(binary)
@@ -289,7 +294,8 @@ class CrosswordExtractor:
                 cv2.line(debug_lines, (0, y_pos), (w, y_pos), (0, 255, 0), 1)
             for x_pos in v_lines:
                 cv2.line(debug_lines, (x_pos, 0), (x_pos, h), (255, 0, 0), 1)
-            cv2.imwrite("debug_lines.png", debug_lines)
+            os.makedirs("debug_image", exist_ok=True)
+            cv2.imwrite("debug_image/debug_lines.png", debug_lines)
         
         # Extract cell states
         grid = []
@@ -385,7 +391,8 @@ class CrosswordExtractor:
         denoised = cv2.fastNlMeansDenoising(enhanced)
         
         if self.debug:
-            cv2.imwrite("debug_ocr_preprocessed.png", denoised)
+            os.makedirs("debug_image", exist_ok=True)
+            cv2.imwrite("debug_image/debug_ocr_preprocessed.png", denoised)
         
         # Perform OCR
         custom_config = r'--oem 3 --psm 6'  # PSM 6: Assume uniform block of text
