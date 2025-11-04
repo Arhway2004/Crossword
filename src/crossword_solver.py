@@ -964,8 +964,8 @@ def main():
     """Main program entry point"""
     # Check for command-line arguments
     nogui = "--nogui" in sys.argv or "-n" in sys.argv
-    wordlist = sys.argv[1] if len(sys.argv) > 1 else "word.txt"
-    grid = sys.argv[2] if len(sys.argv) > 2 else "grid.txt"
+    grid = sys.argv[1] if len(sys.argv) > 1 else "grid.txt"
+    wordlist = sys.argv[2] if len(sys.argv) > 2 else "word.txt"
 
     # Check for command-line arguments
     nogui = "--nogui" in sys.argv or "-n" in sys.argv

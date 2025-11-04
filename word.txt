@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 9ab95c2 (integrate with prolog (logic still not working for other puzzle))
 SKIRT
 SNOWMAN
 NOD
@@ -15,22 +11,3 @@ DINOSAUR
 GIFT
 FAN
 FIX
-<<<<<<< HEAD
-=======
-after
-again
-box
-could
-every
-from
-know
-open
-put
-some
-stop
-walk
-where
-word
->>>>>>> 6396c5e (attempt to read non-uniformed puzzle)
-=======
->>>>>>> 9ab95c2 (integrate with prolog (logic still not working for other puzzle))
