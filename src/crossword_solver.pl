@@ -1,9 +1,3 @@
-% Crossword Solver in Prolog with FIXED Confidence-Based Heuristic
-% Key fixes:
-% 1. candidate_exists_for_other now checks compatibility with existing placements
-% 2. confidence only counts unfilled neighboring slots
-% 3. Better handling of edge cases
-
 :- dynamic slot/5.
 :- dynamic word/1.
 :- dynamic placement/2.
