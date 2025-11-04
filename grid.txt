@@ -1,12 +1,5 @@
-_________XXX
-X_XXX_XX_XXX
-____X____XXX
-X_X_XXX_X_X_
-_____XX_____
-X_X_X___X_X_
-XXXX_X_XX_X_
-XX_____XXXX_
-_XXXXXX_____
-_X_____XX_XX
-_XX_XX______
-_____X_XX_XX
+___XX
+___XX
+_____
+XX___
+XX___
