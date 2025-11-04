@@ -8,6 +8,7 @@ Beautiful UI with Full Backtracking & Confidence-Based Heuristic
 import turtle
 import time
 import sys
+import os
 
 # Check if pyswip and SWI-Prolog are available
 try:
@@ -188,7 +189,9 @@ class PrologCrosswordSolver:
 
         # Load the Prolog file
         try:
-            self.prolog.consult("crossword_solver.pl")
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            prolog_file = os.path.join(script_dir, "crossword_solver.pl")
+            self.prolog.consult(prolog_file)
             print("✓ Solver choice: Using Prolog solver with confidence heuristic")
         except Exception as e:
             raise RuntimeError(f"Failed to load crossword_solver.pl: {e}")
