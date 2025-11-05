@@ -3,7 +3,9 @@ import time
 
 
 class CrosswordDrawer:
-    """Beautiful crossword drawer with modern UI (FIXED)"""
+    """
+    Crossword Drawer using Turtle graphics
+    """
 
     def __init__(self, grid, cell_size=60, animate=True):
         self.grid = grid
@@ -16,12 +18,12 @@ class CrosswordDrawer:
 
         # Color scheme
         self.colors = {
-            "background": "#2C3E50",
+            "background": "#AAAAAA",
             "cell_bg": "#FFFFFF",  # Pure white for empty cells
             "cell_border": "#34495E",
-            "blocked": "#34495E",
-            "letter": "#2C3E50",
-            "letter_placing": "#27AE60",
+            "blocked": "#000000",
+            "letter": "#000000",
+            "letter_placing": "#000000",
             "letter_backtrack": "#E74C3C",
             "title": "#ECF0F1",
         }
@@ -49,16 +51,19 @@ class CrosswordDrawer:
             self.screen.tracer(0)
 
     def draw_grid(self):
-        """Draw beautiful crossword grid (FIXED: lighter empty cells)"""
+        """Draw beautiful crossword grid with proper grid lines and black borders (no animation)"""
+        # Disable animation for instant grid drawing
+        self.screen.tracer(0)
+
         start_x = -(self.cols * self.cell_size) / 2
         start_y = (self.rows * self.cell_size) / 2
 
-        # Draw outer border
+        # Draw outer border (thicker for emphasis)
         self.pen.penup()
         self.pen.goto(start_x - 5, start_y + 5)
         self.pen.pendown()
-        self.pen.pensize(8)
-        self.pen.color(self.colors["cell_border"])
+        self.pen.pensize(6)
+        self.pen.color("#1A252F")  # Darker outer border
         for _ in range(4):
             if _ % 2 == 0:
                 self.pen.forward(self.cols * self.cell_size + 10)
@@ -66,8 +71,7 @@ class CrosswordDrawer:
                 self.pen.forward(self.rows * self.cell_size + 10)
             self.pen.right(90)
 
-        # Draw cells (FIX: Don't fill empty cells, only draw borders)
-        self.pen.pensize(2)
+        # Draw individual cells with black borders
         for row in range(self.rows):
             for col in range(self.cols):
                 x = start_x + col * self.cell_size
@@ -78,23 +82,73 @@ class CrosswordDrawer:
                 self.pen.pendown()
 
                 if self.grid[row][col] == "X":
-                    # Blocked cells: filled
+                    # Blocked cells: dark filled squares
+                    self.pen.pensize(2)
                     self.pen.fillcolor(self.colors["blocked"])
-                    self.pen.color(self.colors["blocked"])
+                    self.pen.color(
+                        self.colors["blocked"]
+                    )  # Same color for border and fill
                     self.pen.begin_fill()
                     for _ in range(4):
                         self.pen.forward(self.cell_size)
                         self.pen.right(90)
                     self.pen.end_fill()
                 else:
-                    # Empty cells: white background with border only
+                    # Empty cells: white background with black borders
+                    # First fill with white
+                    self.pen.pensize(1)
                     self.pen.fillcolor(self.colors["cell_bg"])
-                    self.pen.color(self.colors["cell_border"])
+                    self.pen.color(self.colors["cell_bg"])
                     self.pen.begin_fill()
                     for _ in range(4):
                         self.pen.forward(self.cell_size)
                         self.pen.right(90)
                     self.pen.end_fill()
+
+                    # Then draw black border on top
+                    self.pen.penup()
+                    self.pen.goto(x, y)
+                    self.pen.pendown()
+                    self.pen.pensize(2)
+                    self.pen.color("#000000")  # Black border
+                    for _ in range(4):
+                        self.pen.forward(self.cell_size)
+                        self.pen.right(90)
+
+        # Re-enable animation if it was originally enabled
+        if self.animate:
+            self.screen.tracer(1)
+
+        self.screen.update()
+
+    def draw_slot_numbers(self, slots):
+        """Draw small slot numbers in the top-left corner of each slot's first cell (no animation)"""
+        # Disable animation for instant drawing
+        self.screen.tracer(0)
+
+        start_x = -(self.cols * self.cell_size) / 2
+        start_y = (self.rows * self.cell_size) / 2
+
+        self.pen.penup()
+        for slot in slots:
+            row, col = slot["row"], slot["col"]
+            slot_id = slot["id"]
+
+            # Position for the slot number (top-left corner of the cell)
+            x = start_x + col * self.cell_size + 3
+            y = start_y - row * self.cell_size - 12
+
+            self.pen.goto(x, y)
+            self.pen.color("#7F8C8D")  # Gray color for slot numbers
+            self.pen.write(
+                str(slot_id),
+                align="left",
+                font=("Arial", int(self.cell_size * 0.18), "normal"),
+            )
+
+        # Re-enable animation if it was originally enabled
+        if self.animate:
+            self.screen.tracer(1)
 
         self.screen.update()
 
@@ -104,7 +158,7 @@ class CrosswordDrawer:
             color = self.colors["letter"]
 
         self.pen.penup()
-        self.pen.goto(x + self.cell_size / 2, y - self.cell_size * 0.72)
+        self.pen.goto(x + self.cell_size / 2, y - self.cell_size * 0.92)
         self.pen.color(color)
         self.pen.write(
             letter.upper(),
@@ -113,7 +167,7 @@ class CrosswordDrawer:
         )
 
     def clear_cell(self, row, col):
-        """Clear a cell and redraw any intersecting letters (FIXED)"""
+        """Clear a cell and redraw with proper black borders"""
         start_x = -(self.cols * self.cell_size) / 2
         start_y = (self.rows * self.cell_size) / 2
         x = start_x + col * self.cell_size
@@ -122,23 +176,40 @@ class CrosswordDrawer:
         self.pen.penup()
         self.pen.goto(x, y)
         self.pen.pendown()
-        self.pen.pensize(2)
 
-        # Redraw cell background
         if self.grid[row][col] == "X":
+            # Blocked cells: dark filled squares
+            self.pen.pensize(2)
             self.pen.fillcolor(self.colors["blocked"])
             self.pen.color(self.colors["blocked"])
+            self.pen.begin_fill()
+            for _ in range(4):
+                self.pen.forward(self.cell_size)
+                self.pen.right(90)
+            self.pen.end_fill()
         else:
+            # Empty cells: white background with black borders
+            # First fill with white
+            self.pen.pensize(1)
             self.pen.fillcolor(self.colors["cell_bg"])
-            self.pen.color(self.colors["cell_border"])
+            self.pen.color(self.colors["cell_bg"])
+            self.pen.begin_fill()
+            for _ in range(4):
+                self.pen.forward(self.cell_size)
+                self.pen.right(90)
+            self.pen.end_fill()
 
-        self.pen.begin_fill()
-        for _ in range(4):
-            self.pen.forward(self.cell_size)
-            self.pen.right(90)
-        self.pen.end_fill()
+            # Then draw black border on top
+            self.pen.penup()
+            self.pen.goto(x, y)
+            self.pen.pendown()
+            self.pen.pensize(2)
+            self.pen.color("#000000")  # Black border
+            for _ in range(4):
+                self.pen.forward(self.cell_size)
+                self.pen.right(90)
 
-        # FIX: Redraw any letter that should still be there from other placements
+        # Redraw any letter that should still be there from other placements
         for sid, word in self.current_placements.items():
             if sid >= len(self.slots_storage):
                 continue
@@ -214,9 +285,10 @@ class CrosswordDrawer:
                 time.sleep(0.03)
 
     def draw_solution(self, slots, solution, animated=False):
-        """Draw the complete solved crossword"""
+        """Draw the complete solved crossword with grid and slot numbers"""
         self.slots_storage = slots
         self.draw_grid()
+        self.draw_slot_numbers(slots)  # Add slot numbers to the grid
 
         if not solution:
             self.update_info("NO SOLUTION FOUND", self.colors["letter_backtrack"])
