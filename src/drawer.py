@@ -31,16 +31,48 @@ class CrosswordDrawer:
         width = max(900, self.cols * cell_size + 200)
         height = max(700, self.rows * cell_size + 250)
 
-        self.screen = turtle.Screen()
+        # Create or re-create a Turtle Screen safely even after it was closed previously
+        try:
+            self.screen = turtle.Screen()
+        except turtle.Terminator:
+            # Turtle engine was terminated; re-enable and create a new Screen
+            try:
+                turtle.TurtleScreen._RUNNING = True
+            except Exception:
+                pass
+            self.screen = turtle.Screen()
         self.screen.setup(width=width, height=height)
         self.screen.title("Crossword Puzzle Solver - Fixed Version")
         self.screen.bgcolor(self.colors["background"])
+        # Hide the default (anonymous) turtle cursor if it exists
+        try:
+            turtle.hideturtle()
+        except Exception:
+            pass
 
-        self.pen = turtle.Turtle()
+        # Create primary drawing pen; recover if engine was terminated
+        try:
+            self.pen = turtle.Turtle()
+        except turtle.Terminator:
+            try:
+                turtle.TurtleScreen._RUNNING = True
+            except Exception:
+                pass
+            self.screen = turtle.Screen()
+            self.pen = turtle.Turtle()
         self.pen.speed(0)
         self.pen.hideturtle()
 
-        self.info = turtle.Turtle()
+        # Create info turtle; recover if needed
+        try:
+            self.info = turtle.Turtle()
+        except turtle.Terminator:
+            try:
+                turtle.TurtleScreen._RUNNING = True
+            except Exception:
+                pass
+            self.screen = turtle.Screen()
+            self.info = turtle.Turtle()
         self.info.speed(0)
         self.info.hideturtle()
         self.info.penup()
@@ -294,8 +326,7 @@ class CrosswordDrawer:
             self.update_info("NO SOLUTION FOUND", self.colors["letter_backtrack"])
             self.screen.update()
             print("\n✗ No solution found")
-            print("✓ Close window to exit")
-            turtle.done()
+            print("✓ You can close the window or try again from the app")
             return
 
         start_x = -(self.cols * self.cell_size) / 2
@@ -325,5 +356,4 @@ class CrosswordDrawer:
 
         self.screen.update()
         self.update_info("✓ PUZZLE SOLVED!", self.colors["letter_placing"])
-        print("\n✓ Close window to exit")
-        turtle.done()
+        print("\n✓ Drawing complete")

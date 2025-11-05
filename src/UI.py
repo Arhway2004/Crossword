@@ -13,7 +13,7 @@ import time
 
 # Import modules
 try:
-    from src.ocr import CrosswordExtractor
+    from src.OCR import CrosswordExtractor
 
     EXTRACTOR_AVAILABLE = True
 except ImportError:
@@ -201,7 +201,7 @@ class SimpleCrosswordUI:
             command=command,
             font=("Arial", 14, "bold"),
             bg=bg,
-            fg="#AAAAAA",
+            fg="#000000",
             activebackground=self.colors["button_hover"],
             relief=tk.FLAT,
             bd=0,
@@ -213,6 +213,14 @@ class SimpleCrosswordUI:
             height=3,
         )
         return btn
+
+    def lock_button(self, btn):
+        """Disable a button to prevent further clicks until reset."""
+        try:
+            btn.config(state=tk.DISABLED, cursor="arrow")
+        except Exception:
+            # Fail-safe: ignore if widget is already destroyed or unavailable
+            pass
 
     # ========================================================================
     # STEP 1: UPLOAD & EXTRACT
@@ -284,6 +292,8 @@ class SimpleCrosswordUI:
             self.grid_extracted = True
             self.btn_words.config(bg=self.colors["button"], state=tk.NORMAL)
             self.btn_upload.config(bg=self.colors["success"])
+            # Lock this step to prevent re-clicks until reset
+            self.lock_button(self.btn_upload)
             self.update_status("Grid extracted successfully ✓", "success")
 
         except Exception as e:
@@ -384,6 +394,8 @@ class SimpleCrosswordUI:
             self.words_ready = True
             self.btn_solve.config(bg=self.colors["button"], state=tk.NORMAL)
             self.btn_words.config(bg=self.colors["success"])
+            # Lock this step to prevent re-clicks until reset
+            self.lock_button(self.btn_words)
             self.update_status(f"{len(words)} words loaded ✓", "success")
             word_window.destroy()
 
@@ -419,6 +431,9 @@ class SimpleCrosswordUI:
         self.log("🔄 Initializing solver...\n")
         self.update_status("Solving puzzle...", "warning")
         self.root.update()
+
+        # Lock this step immediately to avoid double-clicks; requires Reset to start over
+        self.lock_button(self.btn_solve)
 
         try:
             # Read grid
@@ -518,7 +533,8 @@ class SimpleCrosswordUI:
             self.grid_extracted = False
             self.words_ready = False
 
-            self.btn_upload.config(bg=self.colors["button"])
+            # Re-enable first step button; other steps remain disabled until progressed again
+            self.btn_upload.config(bg=self.colors["button"], state=tk.NORMAL, cursor="hand2")
             self.btn_words.config(bg=self.colors["panel_bg"], state=tk.DISABLED)
             self.btn_solve.config(bg=self.colors["panel_bg"], state=tk.DISABLED)
 

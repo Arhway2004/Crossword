@@ -365,6 +365,13 @@ def entry(gridfile, wordfile, nogui=False):
 
         if drawer and not nogui:
             drawer.draw_solution(slots, solution, animated=True)
+            # In CLI mode, explicitly close Turtle window when done
+            try:
+                import turtle
+
+                turtle.done()
+            except Exception:
+                pass
         else:
             print("\n✓ Crossword solved successfully!")
             if nogui:
@@ -377,3 +384,10 @@ def entry(gridfile, wordfile, nogui=False):
         )
         if drawer and not nogui:
             drawer.draw_solution(slots, None)
+            # In CLI mode, explicitly close Turtle window when done
+            try:
+                import turtle
+
+                turtle.done()
+            except Exception:
+                pass

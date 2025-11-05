@@ -1,4 +1,4 @@
-from src.ui import SimpleCrosswordUI
+from src.UI import SimpleCrosswordUI
 
 
 def main():
