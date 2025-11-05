@@ -266,7 +266,7 @@ class SimpleCrosswordUI:
             extractor.save_grid("grid.txt")
 
             self.log(
-                f"\n✅ SUCCESS! Grid extracted: {len(grid)}×{len(grid[0])}\n\n",
+                f"\nSUCCESS! Grid extracted: {len(grid)}×{len(grid[0])}\n\n",
                 "success",
             )
 
@@ -284,7 +284,7 @@ class SimpleCrosswordUI:
             self.grid_extracted = True
             self.btn_words.config(bg=self.colors["button"], state=tk.NORMAL)
             self.btn_upload.config(bg=self.colors["success"])
-            self.update_status("Grid extracted successfully ✓", "success")
+            self.update_status("Grid extracted successfully", "success")
 
         except Exception as e:
             self.log(f"\n✗ ERROR: {str(e)}\n", "error")
@@ -412,11 +412,11 @@ class SimpleCrosswordUI:
         self.log("═" * 60 + "\n\n")
 
         if not SOLVER_AVAILABLE:
-            self.log("✗ ERROR: crossword_solver.py not found!\n", "error")
+            self.log("ERROR: crossword_solver.py not found!\n", "error")
             self.update_status("Solver module missing", "error")
             return
 
-        self.log("🔄 Initializing solver...\n")
+        self.log("Initializing solver...\n")
         self.update_status("Solving puzzle...", "warning")
         self.root.update()
 
