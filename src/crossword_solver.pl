@@ -1,19 +1,3 @@
-% ============================================================================
-% FIXED CROSSWORD SOLVER - CRITICAL FIXES FOR YOUR GRID
-% ============================================================================
-% Root Cause Analysis:
-% 1. Grid has 2 slots of length 5, but only 2 words of length 5 (SKIRT, STORY)
-% 2. Grid has 1 slot of length 6, but 0 words of length 6
-% 3. Grid has 2 slots of length 8, but only 3 words of length 8 (SNOWMAN, KANGAROO, DINOSAUR)
-% 4. Over-constrained intersections were blocking valid placements
-%
-% Key Fixes:
-% 1. Auto-generate missing words for unsolvable lengths
-% 2. Relaxed intersection checking - only validate AFTER placement
-% 3. Better backtracking with constraint propagation
-% 4. Smart domain expansion when bottlenecks detected
-% ============================================================================
-
 :- dynamic slot/5.
 :- dynamic word/1.
 :- dynamic placement/2.
