@@ -145,9 +145,9 @@ solve :-
     forall(
         member(Len, UniqueLengths),
         (findall(S, slot(S, _, _, _, Len), Slots),
-         length(Slots, SC),
+         length(Slots, _),
          findall(W, (word(W), atom_length(W, Len)), Words),
-         length(Words, WC)
+         length(Words, _)
     )), 
     
     % Solve
@@ -173,8 +173,7 @@ analyze_failure :-
         Counts),
     sort(Counts, Sorted),
     forall(member(Count-Slot, Sorted),
-           (format('  Slot ~w: ~w candidates~n', [Slot, Count]),
-            (Count =:= 0 -> false ; true))).
+           format('  Slot ~w: ~w candidates~n', [Slot, Count])).
 
 % ============================================================================
 % PYTHON INTERFACE
