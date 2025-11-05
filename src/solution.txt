@@ -1,0 +1,10 @@
+2:twain
+5:art
+0:ana
+6:now
+7:aware
+1:row
+3:roo
+8:ion
+9:nod
+4:end
