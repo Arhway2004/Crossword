@@ -1,20 +1,18 @@
 """
-Crossword Puzzle Image Extractor - Improved Grid Detection
-Extracts grid layout and clues from crossword puzzle images using OCR
+Crossword Puzzle Grid Extractor
+Extracts grid layout from crossword puzzle images
 """
 
 import cv2
 import numpy as np
-import pytesseract
 from PIL import Image
-import re
 import os
 from typing import Tuple, List, Optional
 import argparse
 
 
 class CrosswordExtractor:
-    """Extract crossword grid and clues from images"""
+    """Extract crossword grid from images"""
     
     def __init__(self, rows, cols, image_path: str, debug: bool = False):
         self.rows = rows
@@ -23,7 +21,6 @@ class CrosswordExtractor:
         self.debug = debug
         self.image = None
         self.grid = None
-        self.clues = []
         
         # Load and validate image
         self._load_image()
@@ -371,141 +368,6 @@ class CrosswordExtractor:
         self.grid = self._extract_grid_layout(grid_region)
         return self.grid
     
-    def _extract_text_regions(self) -> str:
-        """
-        Extract text from the image using OCR
-        
-        Returns:
-            Raw text extracted from image
-        """
-        print("Extracting text using OCR...")
-        
-        # Convert to grayscale for better OCR
-        gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-        
-        # Apply preprocessing for better OCR
-        # Increase contrast
-        enhanced = cv2.equalizeHist(gray)
-        
-        # Denoise
-        denoised = cv2.fastNlMeansDenoising(enhanced)
-        
-        if self.debug:
-            os.makedirs("debug_image", exist_ok=True)
-            cv2.imwrite("debug_image/debug_ocr_preprocessed.png", denoised)
-        
-        # Perform OCR
-        custom_config = r'--oem 3 --psm 6'  # PSM 6: Assume uniform block of text
-        text = pytesseract.image_to_string(denoised, config=custom_config)
-        
-        if self.debug:
-            print("Raw OCR output:")
-            print(text)
-            print("-" * 50)
-        
-        return text
-    
-    def _parse_clues(self, text: str) -> List[str]:
-        """
-        Parse and clean clue text
-        
-        Args:
-            text: Raw OCR text
-            
-        Returns:
-            List of cleaned clue strings
-        """
-        print("Parsing and cleaning clues...")
-        
-        # Split into lines
-        lines = text.split('\n')
-        
-        # Remove empty lines and strip whitespace
-        lines = [line.strip() for line in lines if line.strip()]
-        
-        # Filter out header lines and non-clue text
-        header_keywords = [
-            'across', 'down', 'crossword', 'puzzle', 'clues',
-            'copyright', 'by', 'edited', 'page', 'www', 'http'
-        ]
-        
-        clues = []
-        for line in lines:
-            line_lower = line.lower()
-            
-            # Skip header lines
-            if any(keyword in line_lower for keyword in header_keywords):
-                # Exception: if line starts with a number, it might be a valid clue
-                if not re.match(r'^\d+\.', line):
-                    continue
-            
-            # Check if line starts with a number followed by period
-            # Pattern: "NUMBER. CLUE TEXT"
-            match = re.match(r'^(\d+)\.\s*(.+)$', line)
-            
-            if match:
-                number = match.group(1)
-                clue_text = match.group(2).strip()
-                
-                # Clean up common OCR errors
-                clue_text = self._clean_ocr_text(clue_text)
-                
-                # Reconstruct clue
-                clues.append(f"{number}. {clue_text}")
-        
-        print(f"Extracted {len(clues)} clues")
-        
-        if self.debug and clues:
-            print("Sample clues:")
-            for clue in clues[:5]:
-                print(f"  {clue}")
-        
-        return clues
-    
-    def _clean_ocr_text(self, text: str) -> str:
-        """
-        Clean common OCR errors
-        
-        Args:
-            text: Raw text to clean
-            
-        Returns:
-            Cleaned text
-        """
-        # Common OCR substitutions
-        replacements = {
-            '|': 'I',
-            '0': 'O',  # Context-dependent, but often correct in words
-            '§': 'S',
-            '€': 'C',
-            '@': 'a',
-        }
-        
-        cleaned = text
-        for old, new in replacements.items():
-            # Only replace in word contexts
-            cleaned = re.sub(f'{old}(?=[a-z])', new, cleaned)
-        
-        # Remove multiple spaces
-        cleaned = re.sub(r'\s+', ' ', cleaned)
-        
-        return cleaned
-    
-    def extract_clues(self) -> List[str]:
-        """
-        Main method to extract clues
-        
-        Returns:
-            List of clue strings
-        """
-        # Extract text
-        raw_text = self._extract_text_regions()
-        
-        # Parse clues
-        self.clues = self._parse_clues(raw_text)
-        
-        return self.clues
-    
     def save_grid(self, filename: str = "grid.txt"):
         """
         Save grid to file
@@ -525,35 +387,15 @@ class CrosswordExtractor:
         
         print(f"Grid saved successfully ({len(self.grid)}x{len(self.grid[0])} cells)")
     
-    def save_clues(self, filename: str = "word.txt"):
+    def save_results(self, grid_file: str = "grid.txt"):
         """
-        Save clues to file
-        
-        Args:
-            filename: Output filename
-        """
-        if not self.clues:
-            print("Warning: No clues to save. Run extract_clues() first.")
-            return
-        
-        print(f"Saving clues to {filename}...")
-        
-        with open(filename, 'w') as f:
-            for clue in self.clues:
-                f.write(clue + '\n')
-        
-        print(f"Clues saved successfully ({len(self.clues)} clues)")
-    
-    def save_results(self, grid_file: str = "grid.txt", clues_file: str = "word.txt"):
-        """
-        Extract and save both grid and clues
+        Extract and save grid
         
         Args:
             grid_file: Output filename for grid
-            clues_file: Output filename for clues
         """
         print("=" * 60)
-        print("CROSSWORD EXTRACTION STARTED")
+        print("CROSSWORD GRID EXTRACTION STARTED")
         print("=" * 60)
         
         try:
@@ -562,17 +404,10 @@ class CrosswordExtractor:
             self.save_grid(grid_file)
             
             print()
-            
-            # Extract clues
-            self.extract_clues()
-            self.save_clues(clues_file)
-            
-            print()
             print("=" * 60)
             print("EXTRACTION COMPLETED SUCCESSFULLY")
             print("=" * 60)
             print(f"Grid saved to: {grid_file}")
-            print(f"Clues saved to: {clues_file}")
             
         except Exception as e:
             print()
@@ -584,8 +419,8 @@ class CrosswordExtractor:
 
 
 def main():
-    """Run crossword extraction with optional size parameters"""
-    parser = argparse.ArgumentParser(description="Crossword Puzzle Image Extractor")
+    """Run crossword grid extraction with optional size parameters"""
+    parser = argparse.ArgumentParser(description="Crossword Puzzle Grid Extractor")
     parser.add_argument("--image", type=str, required=True, help="Path to crossword image")
     parser.add_argument("--rows", type=int, help="Number of rows in grid (default: auto-detect)")
     parser.add_argument("--cols", type=int, help="Number of columns in grid (default: auto-detect)")
@@ -596,10 +431,7 @@ def main():
 
     extractor = CrosswordExtractor(args.rows, args.cols, args.image, debug=args.debug)
 
-    extractor.save_results(
-        os.path.join(args.outdir, "grid.txt"),
-        os.path.join(args.outdir, "word.txt")
-    )
+    extractor.save_results(os.path.join(args.outdir, "grid.txt"))
 
 
 if __name__ == "__main__":
