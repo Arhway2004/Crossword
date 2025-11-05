@@ -294,8 +294,7 @@ class CrosswordDrawer:
             self.update_info("NO SOLUTION FOUND", self.colors["letter_backtrack"])
             self.screen.update()
             print("\n✗ No solution found")
-            print("✓ Close window to exit")
-            turtle.done()
+            # turtle.done()
             return
 
         start_x = -(self.cols * self.cell_size) / 2
@@ -326,4 +325,4 @@ class CrosswordDrawer:
         self.screen.update()
         self.update_info("✓ PUZZLE SOLVED!", self.colors["letter_placing"])
         print("\n✓ Close window to exit")
-        turtle.done()
+        # turtle.done()
