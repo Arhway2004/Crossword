@@ -1,17 +1,10 @@
-"""
-============================================================================
-CROSSWORD PUZZLE SOLVER - PYTHON MAIN PROGRAM (FIXED)
-Beautiful UI with Full Backtracking & Confidence-Based Heuristic
-============================================================================
-"""
-
 import time
 import sys
 import os
-from solver import PythonCrosswordSolver
-from drawer import CrosswordDrawer
+from src.solver import PythonCrosswordSolver
+from src.drawer import CrosswordDrawer
+from src.reader import GridReader
 
-# Check if pyswip and SWI-Prolog are available
 try:
     from pyswip import Prolog
 
@@ -27,151 +20,6 @@ except Exception as e:
     print(f"WARNING: SWI-Prolog not found ({e})")
     print("Please install SWI-Prolog from: https://www.swi-prolog.org/download/stable")
     print("Falling back to Python-only solver...\n")
-
-
-class GridReader:
-    """Reads and parses crossword grid from file"""
-
-    def __init__(self, filename):
-        self.grid = self.read_grid(filename)
-        self.rows = len(self.grid)
-        self.cols = len(self.grid[0]) if self.grid else 0
-
-    def read_grid(self, filename):
-        """Read grid from file where _ = empty, X/# = blocked"""
-        try:
-            with open(filename, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-
-                # Check if grid uses pipe separators
-                if "|" in content:
-                    print("  Grid normalization: Detected pipe-separated format")
-                    rows = [line.strip() for line in content.split("|") if line.strip()]
-                else:
-                    print("  Grid normalization: Using line-per-row format")
-                    rows = [
-                        line.strip() for line in content.split("\n") if line.strip()
-                    ]
-
-                # Normalize characters: * -> X, # -> X, space -> _
-                normalized_rows = []
-                for row in rows:
-                    normalized = (
-                        row.replace("*", "X").replace("#", "X").replace(" ", "_")
-                    )
-                    normalized_rows.append(list(normalized))
-
-                # Validate only X and _ remain
-                for i, row in enumerate(normalized_rows):
-                    for j, cell in enumerate(row):
-                        if cell not in ["X", "_"]:
-                            raise ValueError(
-                                f"Invalid character '{cell}' at row {i}, col {j}. Only 'X', '#' and '_' allowed after normalization."
-                            )
-
-                # Ensure all rows have same length
-                if normalized_rows:
-                    max_len = max(len(row) for row in normalized_rows)
-                    for i, row in enumerate(normalized_rows):
-                        if len(row) < max_len:
-                            deficit = max_len - len(row)
-                            if deficit > 2:
-                                raise ValueError(
-                                    f"Row {i} has length {len(row)}, expected {max_len} (difference too large)"
-                                )
-                            print(
-                                f"  Warning: Padding row {i} with {deficit} 'X' cells"
-                            )
-                            row.extend(["X"] * deficit)
-
-                print(
-                    f"  Grid normalized: {len(normalized_rows)} rows x {len(normalized_rows[0]) if normalized_rows else 0} cols"
-                )
-                return normalized_rows
-
-        except FileNotFoundError:
-            print(f"ERROR: {filename} not found!")
-            print("Creating sample grid.txt...")
-            self.create_sample_grid()
-            return self.read_grid(filename)
-
-    def create_sample_grid(self):
-        """Create a sample grid file"""
-        sample = """___XXXX
-_XXXXXX
-_XXXXXX
-_XXXXXX
-_XXXXXX
-___XXXX"""
-        with open("grid.txt", "w") as f:
-            f.write(sample)
-        print("✓ Created sample grid.txt")
-
-    def find_slots(self):
-        """Find all word slots (across and down) with length >= 2"""
-        slots = []
-        slot_id = 0
-
-        # Find ACROSS slots (horizontal)
-        for row_idx in range(self.rows):
-            col = 0
-            while col < self.cols:
-                # Start slot if current cell is empty AND (at left edge OR left cell is blocked)
-                if self.grid[row_idx][col] == "_" and (
-                    col == 0 or self.grid[row_idx][col - 1] == "X"
-                ):
-                    start_col = col
-                    length = 0
-                    # Extend right while empty
-                    while col < self.cols and self.grid[row_idx][col] == "_":
-                        length += 1
-                        col += 1
-                    # Record if length >= 2
-                    if length >= 2:
-                        slots.append(
-                            {
-                                "id": slot_id,
-                                "direction": "across",
-                                "row": row_idx,
-                                "col": start_col,
-                                "length": length,
-                            }
-                        )
-                        slot_id += 1
-                else:
-                    col += 1
-
-        # Find DOWN slots (vertical)
-        for col_idx in range(self.cols):
-            row = 0
-            while row < self.rows:
-                # Start slot if current cell is empty AND (at top edge OR top cell is blocked)
-                if self.grid[row][col_idx] == "_" and (
-                    row == 0 or self.grid[row - 1][col_idx] == "X"
-                ):
-                    start_row = row
-                    length = 0
-                    # Extend down while empty
-                    while row < self.rows and self.grid[row][col_idx] == "_":
-                        length += 1
-                        row += 1
-                    # Record if length >= 2
-                    if length >= 2:
-                        slots.append(
-                            {
-                                "id": slot_id,
-                                "direction": "down",
-                                "row": start_row,
-                                "col": col_idx,
-                                "length": length,
-                            }
-                        )
-                        slot_id += 1
-                else:
-                    row += 1
-
-        print(f"  Slot detection: Found {len(slots)} slots")
-        return slots
 
 
 class PrologCrosswordSolver:
@@ -378,6 +226,7 @@ class PrologCrosswordSolver:
                                 )
                         except (ValueError, IndexError):
                             print(f"Warning: Could not parse solution item: {item}")
+
                 elif hasattr(item, "functor") and item.functor.name == ",":
                     # Handle compound term format (backup)
                     slot_id = int(str(item.args[0]))
@@ -436,16 +285,9 @@ def print_ascii_grid(grid, solution, slots):
     print()
 
 
-def main():
+def entry(gridfile, wordfile, nogui=False):
     """Main program entry point"""
     # Check for command-line arguments
-    nogui = "--nogui" in sys.argv or "-n" in sys.argv
-    grid = sys.argv[1] if len(sys.argv) > 1 else "grid.txt"
-    wordlist = sys.argv[2] if len(sys.argv) > 2 else "word.txt"
-
-    # Check for command-line arguments
-    nogui = "--nogui" in sys.argv or "-n" in sys.argv
-
     print("=" * 70)
     print("   CROSSWORD PUZZLE SOLVER (FIXED VERSION)")
     print("   Confidence-Based Heuristic + Full Backtracking")
@@ -454,7 +296,7 @@ def main():
     print("=" * 70)
 
     print("\n[1] Reading grid...")
-    grid_reader = GridReader(str(grid))
+    grid_reader = GridReader(str(gridfile))
     print(f"    Grid: {grid_reader.rows} x {grid_reader.cols}")
 
     print("\n[2] Finding slots...")
@@ -495,7 +337,7 @@ def main():
 
     print(f"\n[{'5' if nogui else '5'}] Loading data...")
     solver.load_slots(slots)
-    solver.load_words(str(wordlist))
+    solver.load_words(str(wordfile))
     solver.load_constraints("constraints.txt", slots)
 
     print(f"\n[{'6' if nogui else '6'}] Solving with confidence-based heuristic...")
@@ -539,13 +381,3 @@ def main():
         )
         if drawer and not nogui:
             drawer.draw_solution(slots, None)
-
-
-if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] in ["--help", "-h"]:
-        print("Usage: python3 crossword_solver.py [options]")
-        print("Options:")
-        print("  --nogui, -n    Run without graphical interface")
-        print("  --help, -h     Show this help message")
-    else:
-        main()

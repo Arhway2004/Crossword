@@ -1,9 +1,10 @@
-#!/usr/bin/env python3
-"""
-Debug script to test Prolog solver without GUI
-"""
+import os
+import sys
 
-# Check if pyswip and SWI-Prolog are available
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from src.reader import GridReader
+
 try:
     from pyswip import Prolog
 
@@ -32,7 +33,8 @@ def test_prolog_solver():
 
     # Load the Prolog file
     try:
-        prolog.consult("crossword_solver.pl")
+        file = os.path.join(os.path.dirname(__file__), "..", "src/crossword_solver.pl")
+        prolog.consult(file)
         print("✓ crossword_solver.pl loaded")
     except Exception as e:
         print(f"✗ Failed to load crossword_solver.pl: {e}")
@@ -147,9 +149,6 @@ def test_prolog_solver():
         # Clear existing data
         list(prolog.query("retractall(slot(_, _, _, _, _))"))
         list(prolog.query("retractall(word(_))"))
-
-        # Read and load real slots from grid.txt
-        from crossword_solver import GridReader
 
         grid_reader = GridReader("grid.txt")
         slots = grid_reader.find_slots()
