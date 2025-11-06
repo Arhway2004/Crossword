@@ -42,6 +42,7 @@ class SimpleCrosswordUI:
         self.image_path = None
         self.grid_extracted = False
         self.words_ready = False
+        self.drawer = None
 
         # Colors
         self.colors = {
@@ -274,7 +275,7 @@ class SimpleCrosswordUI:
             extractor.save_grid("grid.txt")
 
             self.log(
-                f"\n✅ SUCCESS! Grid extracted: {len(grid)}×{len(grid[0])}\n\n",
+                f"\nSUCCESS! Grid extracted: {len(grid)}×{len(grid[0])}\n\n",
                 "success",
             )
 
@@ -387,7 +388,7 @@ class SimpleCrosswordUI:
             self.log(f"✅ Saved {len(words)} words\n\n", "success")
             self.log("Words: " + ", ".join(words[:10]))
             if len(words) > 10:
-                self.log(f"... and {len(words)-10} more")
+                self.log(f"... and {len(words) - 10} more")
             self.log("\n\n✓ Ready to solve!\n", "success")
 
             # Enable solve button
@@ -424,11 +425,11 @@ class SimpleCrosswordUI:
         self.log("═" * 60 + "\n\n")
 
         if not SOLVER_AVAILABLE:
-            self.log("✗ ERROR: crossword_solver.py not found!\n", "error")
+            self.log("ERROR: crossword_solver.py not found!\n", "error")
             self.update_status("Solver module missing", "error")
             return
 
-        self.log("🔄 Initializing solver...\n")
+        self.log("Initializing solver...\n")
         self.update_status("Solving puzzle...", "warning")
         self.root.update()
 
@@ -448,14 +449,26 @@ class SimpleCrosswordUI:
             solver.load_slots(slots)
             solver.load_words("word.txt")
 
-            # Create visualization
-            self.log("🎨 Opening visualization window...\n")
+            if self.drawer is None:
+                self.drawer = CrosswordDrawer(
+                    grid_reader.grid, cell_size=50, animate=True
+                )
+            else:
+                try:
+                    self.drawer.screen.clear()
+                    self.drawer.pen.clear()
+                    self.drawer.info.clear()
+                    self.drawer.grid = grid_reader.grid
+                except (turtle.Terminator, tk.TclError):
+                    self.drawer = CrosswordDrawer(
+                        grid_reader.grid, cell_size=50, animate=True
+                    )
+
             self.root.update()
 
-            drawer = CrosswordDrawer(grid_reader.grid, cell_size=50, animate=True)
-            drawer.draw_grid()
-            drawer.draw_slot_numbers(slots)
-            drawer.slots_storage = slots
+            self.drawer.draw_grid()
+            self.drawer.draw_slot_numbers(slots)
+            self.drawer.slots_storage = slots
 
             # Set callback for step-by-step visualization
             def visualize_step(slot_id, word, slot, is_placing, placements):
@@ -464,7 +477,7 @@ class SimpleCrosswordUI:
                 )
                 self.root.update()
 
-            solver.set_step_callback(drawer.animate_word_placement)
+            solver.set_step_callback(self.drawer.animate_word_placement)
 
             self.log("\n🔍 Solving with backtracking...\n\n")
 
@@ -475,16 +488,16 @@ class SimpleCrosswordUI:
             end_time = time.time()
 
             if solution:
-                self.log(f"\n{'='*60}\n")
+                self.log(f"\n{'=' * 60}\n")
                 self.log(f"✅ SOLVED in {end_time - start_time:.2f}s!\n", "success")
-                self.log(f"{'='*60}\n\n")
+                self.log(f"{'=' * 60}\n\n")
 
                 for slot_id, word in solution:
                     slot = slots[slot_id]
                     self.log(f"  {slot_id}. {word.upper()} ({slot['direction']})\n")
 
                 # Draw final solution
-                drawer.draw_solution(slots, solution, animated=False)
+                self.drawer.draw_solution(slots, solution, animated=False)
 
                 self.update_status("✅ Puzzle solved!", "success")
                 self.btn_solve.config(bg=self.colors["success"])
@@ -493,7 +506,7 @@ class SimpleCrosswordUI:
                 self.log("\n✗ No solution found\n", "error")
                 self.log("\nTry adding more words or checking the grid.\n")
                 self.update_status("No solution found", "error")
-                drawer.draw_solution(slots, None)
+                self.drawer.draw_solution(slots, None)
 
         except Exception as e:
             self.log(f"\n✗ ERROR: {str(e)}\n", "error")
@@ -529,12 +542,23 @@ class SimpleCrosswordUI:
     def reset_all(self):
         """Reset everything"""
         if messagebox.askyesno("Reset", "Reset all progress?"):
+            if self.drawer:
+                try:
+                    self.drawer.screen.clear()
+                    self.drawer.pen.clear()
+                    self.drawer.info.clear()
+                    self.drawer.update_info("Grid Reset")
+                except turtle.Terminator:
+                    self.drawer = None
+
             self.image_path = None
             self.grid_extracted = False
             self.words_ready = False
 
             # Re-enable first step button; other steps remain disabled until progressed again
-            self.btn_upload.config(bg=self.colors["button"], state=tk.NORMAL, cursor="hand2")
+            self.btn_upload.config(
+                bg=self.colors["button"], state=tk.NORMAL, cursor="hand2"
+            )
             self.btn_words.config(bg=self.colors["panel_bg"], state=tk.DISABLED)
             self.btn_solve.config(bg=self.colors["panel_bg"], state=tk.DISABLED)
 
