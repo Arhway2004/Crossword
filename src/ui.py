@@ -13,7 +13,7 @@ import time
 
 # Import modules
 try:
-    from src.OCR import CrosswordExtractor
+    from src.ocr import CrosswordExtractor
 
     EXTRACTOR_AVAILABLE = True
 except ImportError:
