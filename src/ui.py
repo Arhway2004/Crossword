@@ -548,7 +548,8 @@ class SimpleCrosswordUI:
                     self.drawer.pen.clear()
                     self.drawer.info.clear()
                     self.drawer.update_info("Grid Reset")
-                except turtle.Terminator:
+                except (turtle.Terminator, tk.TclError):
+                    # Turtle window/canvas was closed; drop the drawer so a new one is created next time
                     self.drawer = None
 
             self.image_path = None
