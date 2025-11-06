@@ -5,7 +5,6 @@ Upload Image → Input Words → Solve with Visualization
 ============================================================================
 """
 
-import turtle
 import tkinter as tk
 from tkinter import filedialog, scrolledtext, messagebox
 import os
@@ -27,6 +26,293 @@ try:
 except ImportError:
     SOLVER_AVAILABLE = False
     print("Warning: crossword_solver.py not found")
+
+
+class StepViewer:
+    """Play/Pause/Step viewer for Prolog trace"""
+
+    def __init__(self, parent, grid, slots, steps, solution):
+        self.parent = parent
+        self.grid0 = [row[:] for row in grid]
+        self.slots = slots
+        self.steps = steps or []
+        self.solution = solution or []
+        self.idx = -1
+        self.timer = None
+        self.playing = False
+
+        self.win = tk.Toplevel(parent)
+        self.win.title("Solver Steps")
+        self.win.geometry("900x700")
+
+        top = tk.Frame(self.win)
+        top.pack(fill=tk.X, padx=10, pady=10)
+
+        self.btn_play = tk.Button(top, text="▶ Play", command=self.play)
+        self.btn_pause = tk.Button(top, text="⏸ Pause", command=self.pause, state=tk.DISABLED)
+        self.btn_step = tk.Button(top, text="Step ▶", command=self.step)
+        self.btn_reset = tk.Button(top, text="⟲ Reset", command=self.reset)
+
+        self.btn_play.pack(side=tk.LEFT, padx=5)
+        self.btn_pause.pack(side=tk.LEFT, padx=5)
+        self.btn_step.pack(side=tk.LEFT, padx=5)
+        self.btn_reset.pack(side=tk.LEFT, padx=5)
+
+        self.status = tk.Label(top, text="Ready")
+        self.status.pack(side=tk.RIGHT, padx=5)
+
+        mid = tk.Frame(self.win)
+        mid.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        # Left: Canvas grid
+        left = tk.Frame(mid)
+        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.cell_size = 36
+        self.margin = 10
+        self.step_colors = {
+            "start": "#0078D4",
+            "select_slot": "#2563eb",
+            "try": "#64748b",
+            "place": "#16a34a",
+            "fail_forward": "#dc2626",
+            "backtrack": "#e11d48",
+            "solution": "#b45309",
+        }
+        rows = len(self.grid0)
+        cols = len(self.grid0[0]) if rows else 0
+        cw = self.margin * 2 + cols * self.cell_size
+        ch = self.margin * 2 + rows * self.cell_size
+        self.canvas = tk.Canvas(left, width=cw, height=ch, bg="#ffffff")
+        self.canvas.pack(fill=tk.BOTH, expand=False)
+
+        # Info panel under canvas
+        info = tk.Frame(left)
+        info.pack(fill=tk.X, padx=4, pady=(8, 0))
+        self.info_label = tk.Label(info, text="", anchor="w", justify="left")
+        self.info_label.pack(fill=tk.X)
+
+        # Right: step list
+        right = tk.Frame(mid)
+        right.pack(side=tk.RIGHT, fill=tk.BOTH)
+
+        # Legend
+        legend = tk.Frame(right)
+        legend.pack(fill=tk.X, pady=(0, 6))
+        tk.Label(legend, text="Legend:").pack(anchor="w")
+        for key in ["select_slot", "try", "place", "fail_forward", "backtrack", "solution"]:
+            row = tk.Frame(legend)
+            row.pack(anchor="w")
+            sw = tk.Canvas(row, width=14, height=14, highlightthickness=0)
+            sw.create_rectangle(1, 1, 13, 13, fill=self.step_colors.get(key, "#888"), outline="")
+            sw.pack(side=tk.LEFT)
+            tk.Label(row, text=f" {key}").pack(side=tk.LEFT)
+
+        tk.Label(right, text="Steps").pack()
+        self.listbox = tk.Listbox(right, width=40, height=28)
+        self.listbox.pack(fill=tk.BOTH, expand=True)
+
+        for s in self.steps:
+            txt = self._fmt_step(s)
+            self.listbox.insert(tk.END, txt)
+            # Colorize by type if supported
+            try:
+                idx = self.listbox.size() - 1
+                color = self.step_colors.get(s.get("type"), "#111")
+                self.listbox.itemconfig(idx, fg=color)
+            except Exception:
+                pass
+
+        # If no steps, make it clear and disable play
+        if not self.steps:
+            self.status.config(text="No steps to show")
+            self.btn_play.config(state=tk.DISABLED)
+            self.btn_step.config(state=tk.DISABLED)
+
+        self.render()
+
+        self.win.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _on_close(self):
+        self.pause()
+        self.win.destroy()
+
+    def _fmt_step(self, s):
+        t = s.get("type")
+        sid = s.get("slot")
+        w = s.get("word")
+        w = (w.upper() if isinstance(w, str) else "")
+        i = s.get("i", 0)
+        if t == "select_slot":
+            return f"{i:04d}  SELECT slot {sid}"
+        if t == "try":
+            return f"{i:04d}  TRY slot {sid}: {w}"
+        if t == "place":
+            return f"{i:04d}  PLACE slot {sid}: {w}"
+        if t == "backtrack":
+            return f"{i:04d}  BACKTRACK slot {sid}: {w}"
+        if t == "fail_forward":
+            return f"{i:04d}  FORWARD-FAIL slot {sid}: {w}"
+        if t == "solution":
+            return f"{i:04d}  SOLUTION"
+        if t == "start":
+            return f"{i:04d}  START"
+        return f"{i:04d}  {t} slot {sid}: {w}"
+
+    def play(self):
+        if self.playing:
+            return
+        self.playing = True
+        self.btn_play.config(state=tk.DISABLED)
+        self.btn_pause.config(state=tk.NORMAL)
+        self._tick()
+
+    def pause(self):
+        self.playing = False
+        self.btn_play.config(state=tk.NORMAL)
+        self.btn_pause.config(state=tk.DISABLED)
+        if self.timer:
+            try:
+                self.win.after_cancel(self.timer)
+            except Exception:
+                pass
+            self.timer = None
+
+    def reset(self):
+        self.pause()
+        self.idx = -1
+        self.render()
+
+    def step(self):
+        if self.idx + 1 < len(self.steps):
+            self.idx += 1
+            self.render()
+
+    def _tick(self):
+        if not self.playing:
+            return
+        if self.idx + 1 < len(self.steps):
+            self.idx += 1
+            self.render()
+            self.timer = self.win.after(300, self._tick)  # 0.3s per step
+        else:
+            self.pause()
+
+    def render(self):
+        # Highlight current step
+        self.listbox.selection_clear(0, tk.END)
+        if 0 <= self.idx < len(self.steps):
+            self.listbox.selection_set(self.idx)
+            self.listbox.see(self.idx)
+            cur = self.steps[self.idx]
+            self.status.config(text=self._fmt_step(cur))
+            # Update info pane
+            sid = cur.get("slot")
+            slot = None
+            if isinstance(sid, int) and 0 <= sid < len(self.slots):
+                slot = self.slots[sid]
+            direction = slot["direction"] if slot else "-"
+            length = slot["length"] if slot else "-"
+            word = cur.get("word") or ""
+            note = cur.get("note") or ""
+            self.info_label.config(
+                text=f"Step: {cur.get('type')}\nSlot: {sid}  Dir: {direction}  Len: {length}\nWord: {word.upper()}  {note}"
+            )
+        else:
+            self.status.config(text="Ready")
+            self.info_label.config(text="")
+
+        # Rebuild placement map by replaying steps up to idx
+        placements = {}
+        for k in range(0, self.idx + 1):
+            s = self.steps[k]
+            sid = s.get("slot")
+            w = s.get("word")
+            if s.get("type") == "place" and w:
+                placements[sid] = w
+            elif s.get("type") in ("backtrack", "fail_forward") and w and sid in placements:
+                placements.pop(sid, None)
+
+        # Draw canvas grid with current placements
+        self._draw_canvas(placements)
+
+    def _draw_canvas(self, placements):
+        self.canvas.delete("all")
+        rows = len(self.grid0)
+        cols = len(self.grid0[0]) if rows else 0
+        cs = self.cell_size
+        m = self.margin
+
+        # Determine current slot for highlight
+        cur_slot = None
+        if 0 <= self.idx < len(self.steps):
+            cur_slot = self.steps[self.idx].get("slot")
+
+        # Precompute cells for each slot for drawing slot numbers and highlights
+        def slot_cells(slot):
+            cells = []
+            r, c = slot["row"], slot["col"]
+            L = slot["length"]
+            if slot["direction"] == "across":
+                for i in range(L):
+                    cells.append((r, c + i))
+            else:
+                for i in range(L):
+                    cells.append((r + i, c))
+            return cells
+
+        # Map for quick slot->cells
+        slot_to_cells = {s["id"]: slot_cells(s) for s in self.slots}
+
+        # Background and cells
+        for r in range(rows):
+            for c in range(cols):
+                x0 = m + c * cs
+                y0 = m + r * cs
+                x1 = x0 + cs
+                y1 = y0 + cs
+                is_block = (self.grid0[r][c] == "X")
+
+                fill = "#000000" if is_block else "#ffffff"
+                outline = "#C0C0C0"
+                self.canvas.create_rectangle(x0, y0, x1, y1, fill=fill, outline=outline, width=1)
+
+        # Draw placed letters
+        for sid, word in placements.items():
+            if sid not in slot_to_cells:
+                continue
+            cells = slot_to_cells[sid]
+            for i, ch in enumerate((word or "").upper()):
+                if i >= len(cells):
+                    break
+                r, c = cells[i]
+                if self.grid0[r][c] == "X":
+                    continue
+                x = m + c * cs + cs // 2
+                y = m + r * cs + cs // 2
+                self.canvas.create_text(x, y, text=ch, font=("Helvetica", int(cs*0.45), "bold"), fill="#1f2a44")
+
+        # Slot numbers at starting cells
+        for slot in self.slots:
+            sid = slot["id"]
+            r, c = slot["row"], slot["col"]
+            if 0 <= r < rows and 0 <= c < cols and self.grid0[r][c] != "X":
+                x = m + c * cs + 4
+                y = m + r * cs + 4
+                self.canvas.create_text(x, y, text=str(sid), anchor="nw", font=("Helvetica", int(cs*0.28), "bold"), fill="#888888")
+
+        # Highlight current slot cells (if any) using step color
+        if isinstance(cur_slot, int) and cur_slot in slot_to_cells:
+            step_type = None
+            if 0 <= self.idx < len(self.steps):
+                step_type = self.steps[self.idx].get("type")
+            hl = self.step_colors.get(step_type, "#ff6a00")
+            for (r, c) in slot_to_cells[cur_slot]:
+                x0 = m + c * cs
+                y0 = m + r * cs
+                x1 = x0 + cs
+                y1 = y0 + cs
+                self.canvas.create_rectangle(x0+1, y0+1, x1-1, y1-1, outline=hl, width=2)
 
 
 class SimpleCrosswordUI:
@@ -418,7 +704,7 @@ class SimpleCrosswordUI:
     # ========================================================================
 
     def solve_and_visualize(self):
-        """Solve puzzle with step-by-step visualization"""
+        """Solve puzzle with step-by-step visualization (trace replay, no turtle)"""
         self.clear_output()
         self.log("═" * 60 + "\n")
         self.log("STEP 3: SOLVE & VISUALIZE\n", "title")
@@ -449,43 +735,17 @@ class SimpleCrosswordUI:
             solver.load_slots(slots)
             solver.load_words("word.txt")
 
-            if self.drawer is None:
-                self.drawer = CrosswordDrawer(
-                    grid_reader.grid, cell_size=50, animate=True
-                )
-            else:
-                try:
-                    self.drawer.screen.clear()
-                    self.drawer.pen.clear()
-                    self.drawer.info.clear()
-                    self.drawer.grid = grid_reader.grid
-                except (turtle.Terminator, tk.TclError):
-                    self.drawer = CrosswordDrawer(
-                        grid_reader.grid, cell_size=50, animate=True
-                    )
-
             self.root.update()
 
-            self.drawer.draw_grid()
-            self.drawer.draw_slot_numbers(slots)
-            self.drawer.slots_storage = slots
+            self.log("\n🔍 Solving with backtracking (capturing trace)...\n\n")
 
-            # Set callback for step-by-step visualization
-            def visualize_step(slot_id, word, slot, is_placing, placements):
-                self.log(
-                    f"{'  ▶' if is_placing else '  ◀'} Slot {slot_id}: {word.upper()}\n"
-                )
-                self.root.update()
-
-            solver.set_step_callback(self.drawer.animate_word_placement)
-
-            self.log("\n🔍 Solving with backtracking...\n\n")
-
-            # Solve
+            # Solve with trace
             slot_ids = [s["id"] for s in slots]
             start_time = time.time()
-            solution = solver.solve(slot_ids)
+            solution, steps = solver.solve_with_trace(slot_ids)
             end_time = time.time()
+
+            self.log(f"Trace steps: {len(steps)}\n")
 
             if solution:
                 self.log(f"\n{'=' * 60}\n")
@@ -496,17 +756,14 @@ class SimpleCrosswordUI:
                     slot = slots[slot_id]
                     self.log(f"  {slot_id}. {word.upper()} ({slot['direction']})\n")
 
-                # Draw final solution
-                self.drawer.draw_solution(slots, solution, animated=False)
-
-                self.update_status("✅ Puzzle solved!", "success")
+                self.update_status("✅ Puzzle solved! Open trace window to replay.", "success")
                 self.btn_solve.config(bg=self.colors["success"])
-
             else:
-                self.log("\n✗ No solution found\n", "error")
-                self.log("\nTry adding more words or checking the grid.\n")
-                self.update_status("No solution found", "error")
-                self.drawer.draw_solution(slots, None)
+                self.log("\nNo solution found (showing search trace).\n", "error")
+                self.update_status("No solution found (trace available)", "warning")
+
+            # Open the trace viewer window
+            StepViewer(self.root, grid_reader.grid, slots, steps, solution)
 
         except Exception as e:
             self.log(f"\n✗ ERROR: {str(e)}\n", "error")
@@ -542,15 +799,8 @@ class SimpleCrosswordUI:
     def reset_all(self):
         """Reset everything"""
         if messagebox.askyesno("Reset", "Reset all progress?"):
-            if self.drawer:
-                try:
-                    self.drawer.screen.clear()
-                    self.drawer.pen.clear()
-                    self.drawer.info.clear()
-                    self.drawer.update_info("Grid Reset")
-                except (turtle.Terminator, tk.TclError):
-                    # Turtle window/canvas was closed; drop the drawer so a new one is created next time
-                    self.drawer = None
+            # No turtle canvas used in trace viewer mode
+            pass
 
             self.image_path = None
             self.grid_extracted = False

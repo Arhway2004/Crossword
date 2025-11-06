@@ -251,6 +251,96 @@ class PrologCrosswordSolver:
         print("  No solution found by Prolog solver")
         return None
 
+    # -----------------------------
+    # Trace utilities
+    # -----------------------------
+    def clear_steps(self):
+        """Clear Prolog step log."""
+        try:
+            for _ in self.prolog.query("clear_steps"):
+                pass
+        except Exception:
+            pass
+
+    def fetch_steps(self):
+        """Fetch recorded steps from Prolog as a list of dicts."""
+        steps = []
+        try:
+            # Query as list-of-lists to avoid functor parsing differences across pyswip versions
+            q = "findall([I,T,S,W,N], step(I,T,S,W,N), Steps)"
+            out = list(self.prolog.query(q))
+            if not out:
+                return steps
+            for row in out[0]["Steps"]:
+                try:
+                    # Expect row like [I,T,S,W,N]
+                    i = int(str(row[0]))
+                    t = str(row[1])
+                    s = int(str(row[2]))
+                    w = str(row[3])
+                    n = str(row[4])
+                    steps.append({
+                        "i": i,
+                        "type": t,
+                        "slot": s,
+                        "word": w,
+                        "note": n,
+                    })
+                except Exception:
+                    # Skip malformed entries
+                    continue
+        except Exception as e:
+            print(f"WARNING: fetch_steps failed: {e}")
+        return steps
+
+    def solve_with_trace(self, slot_ids):
+        """Solve and return (solution, steps) for replay visualization."""
+        # Ensure a clean trace and placements
+        self.clear_steps()
+        for _ in self.prolog.query("clear_placements"):
+            pass
+
+        slot_list = str(slot_ids).replace(" ", "")
+        query = f"trace_solve({slot_list}, Solution, Steps)"
+        try:
+            sols = list(self.prolog.query(query))
+        except Exception as e:
+            print(f"Prolog trace_solve failed: {e}")
+            return None, []
+
+        if not sols:
+            return None, []
+
+        solution_term = sols[0].get("Solution", [])
+
+        # Parse solution similar to solve()
+        result = []
+        placements = {}
+        try:
+            for item in solution_term:
+                if (
+                    isinstance(item, str)
+                    and item.startswith(",(")
+                    and item.endswith(")")
+                ):
+                    content = item[2:-1]
+                    parts = content.split(", ", 1)
+                    if len(parts) == 2:
+                        slot_id = int(parts[0])
+                        word = parts[1].strip()
+                        result.append((slot_id, word))
+                        placements[slot_id] = word
+                elif hasattr(item, "functor") and item.functor.name == ",":
+                    slot_id = int(str(item.args[0]))
+                    word = str(item.args[1])
+                    result.append((slot_id, word))
+                    placements[slot_id] = word
+        except Exception as e:
+            print(f"WARNING: Failed parsing solution term: {e}")
+
+        steps = self.fetch_steps()
+        return result if result else None, steps
+
 
 def print_ascii_grid(grid, solution, slots):
     """Print ASCII representation of solved crossword"""
